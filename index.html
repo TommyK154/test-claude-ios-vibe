@@ -830,6 +830,60 @@
     .refresh-btn:disabled { opacity: 0.5; cursor: wait; }
     .refresh-btn:active { background: var(--accent-soft); }
 
+    .list-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .list-controls:empty { display: none; }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip-row-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 700;
+      min-width: 36px;
+    }
+    .chip {
+      min-height: 34px;
+      padding: 6px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+    .chip:active { background: var(--surface-2); }
+    .chip.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .list-count {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 700;
+      padding: 0 4px;
+    }
+
     .plane-list {
       display: flex;
       flex-direction: column;
@@ -1066,6 +1120,7 @@
       <button class="refresh-btn" id="refreshBtn" type="button">Refresh</button>
     </div>
 
+    <div id="listControls" class="list-controls"></div>
     <div id="listContainer"></div>
 
     <footer class="page-footer">Imagery © Esri, Maxar, Earthstar Geographics · Flight data: adsb.fi / adsb.lol / OpenSky · Photos: planespotters.net · Routes: adsbdb.com · AIS: aisstream.io</footer>
@@ -1270,7 +1325,15 @@
         { name: "adsb.fi (allorigins)",url: function (la, lo, nm) { return viaAllOrigins(adsbFiDirect(la, lo, nm)); },parse: normalizeReadsb }
       ];
 
-      var REFRESH_MS = 30000;
+      // Fast refresh for direct APIs (adsb.fi, adsb.lol); fallback rate for
+      // CORS proxies and OpenSky, which have tighter limits. The active source
+      // is recorded after every fetch; scheduleNext picks the right cadence.
+      var REFRESH_MS_FAST = 10000;
+      var REFRESH_MS_FALLBACK = 30000;
+      function currentRefreshMs() {
+        var src = state.activeSource || "";
+        return /proxy|opensky/i.test(src) ? REFRESH_MS_FALLBACK : REFRESH_MS_FAST;
+      }
       var NM_TO_KM = 1.852;
 
       var state = {
@@ -1307,9 +1370,24 @@
         aisKey: null,
         aisSocket: null,
         aisReconnectTimer: null,
-        aisReconnectAttempts: 0
+        aisReconnectAttempts: 0,
+        // Contact-list filter + sort state, persisted in localStorage.
+        listFilter: "all",        // "all" | "air" | "ground" | "mil" | "notable" | "emerg"
+        listSort: "dist",         // "dist" | "alt" | "spd" | "call"
+        listSortDesc: false,
+        shipFilter: "all",        // "all" | "underway" | "anchored" | "distress"
+        shipSort: "dist",         // "dist" | "spd" | "name"
+        shipSortDesc: false
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
+      try {
+        state.listFilter = localStorage.getItem("list.filter") || "all";
+        state.listSort = localStorage.getItem("list.sort") || "dist";
+        state.listSortDesc = localStorage.getItem("list.sortDesc") === "1";
+        state.shipFilter = localStorage.getItem("list.shipFilter") || "all";
+        state.shipSort = localStorage.getItem("list.shipSort") || "dist";
+        state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
+      } catch (e) {}
       state.military = {};  // hex -> true for military aircraft
 
       function refreshMilitary() {
@@ -1467,6 +1545,11 @@
         renderSelected();
         renderTiles();
         fetchNow();
+        // AIS subscription is bbox-scoped. Without this, tapping a preset
+        // moves the ADS-B fetch but leaves AIS listening to the OLD bbox —
+        // user pans to LA but the key is still subscribed to the initial
+        // center, and no ships appear.
+        resubscribeAis();
       }
 
       function setStatus(msg) {
@@ -1789,6 +1872,17 @@
           });
           state.planes.sort(function (a, b) { return (a.distNm || 0) - (b.distNm || 0); });
           accumulateTracks();
+          // Record active source so scheduleNext() picks the right cadence
+          // (10 s for direct APIs, 30 s for CORS proxies / OpenSky).
+          state.activeSource = result.source.name;
+          // Seed dead-reckoning base from the just-fetched ground-truth
+          // positions. Every 1 s tick advances p.lat/p.lon from these.
+          var nowMs = Date.now();
+          state.planes.forEach(function (p) {
+            p.baseLat = p.lat;
+            p.baseLon = p.lon;
+            p.baseAt = nowMs;
+          });
           // Keep the authoritative selected-plane snapshot fresh if the bulk
           // fetch caught it. This prevents the icon flicker that happens when
           // the plane transiently drops out of state.planes between fetches.
@@ -1798,6 +1892,9 @@
                 state.selectedPlaneData = Object.assign(
                   {}, state.selectedPlaneData || {}, state.planes[spi]
                 );
+                state.selectedPlaneData.baseLat = state.planes[spi].lat;
+                state.selectedPlaneData.baseLon = state.planes[spi].lon;
+                state.selectedPlaneData.baseAt = nowMs;
                 break;
               }
             }
@@ -1806,7 +1903,8 @@
           state.lastError = null;
           renderAll();
           renderOverlays();
-          setStatus(formatRelative(0) + " · " + result.source.name);
+          var rateTag = (currentRefreshMs() / 1000) + "s";
+          setStatus(formatRelative(0) + " · " + result.source.name + " · " + rateTag);
           scheduleNext();
         }).catch(function (err) {
           var reason;
@@ -1853,8 +1951,9 @@
 
       function scheduleNext() {
         if (state.refreshTimer) clearTimeout(state.refreshTimer);
-        state.nextFetchAt = Date.now() + REFRESH_MS;
-        state.refreshTimer = setTimeout(fetchNow, REFRESH_MS);
+        var ms = currentRefreshMs();
+        state.nextFetchAt = Date.now() + ms;
+        state.refreshTimer = setTimeout(fetchNow, ms);
         startCountdown();
       }
 
@@ -2119,37 +2218,195 @@
         });
       }
 
+      // Filter predicates. Keep the selected contact visible regardless of
+      // the active filter so the card↔list link never feels broken.
+      function passesPlaneFilter(p) {
+        if (p.hex && p.hex === state.selectedHex) return true;
+        switch (state.listFilter) {
+          case "all":     return true;
+          case "air":     return !p.onGround;
+          case "ground":  return !!p.onGround;
+          case "mil":     return !!(state.military && state.military[p.hex]);
+          case "notable": return !!matchNotableCallsign(p.callsign);
+          case "emerg":   return p.squawk === "7500" || p.squawk === "7600" || p.squawk === "7700";
+          default:        return true;
+        }
+      }
+      function planeSortCmp(a, b) {
+        var dir = state.listSortDesc ? -1 : 1;
+        function n(v, fallback) { return (v == null || isNaN(v)) ? fallback : v; }
+        switch (state.listSort) {
+          case "alt":  return dir * (n(a.altFt, -1) - n(b.altFt, -1));
+          case "spd":  return dir * (n(a.gsKt, -1) - n(b.gsKt, -1));
+          case "call": return dir * String(a.callsign || a.hex || "").localeCompare(String(b.callsign || b.hex || ""));
+          case "dist":
+          default:     return dir * (n(a.distNm, 1e9) - n(b.distNm, 1e9));
+        }
+      }
+      function passesShipFilter(s) {
+        if (state.selectedMmsi === s.mmsi) return true;
+        switch (state.shipFilter) {
+          case "all":      return true;
+          case "underway": return (s.sog || 0) >= 0.5 && s.navStatus !== 1 && s.navStatus !== 5 && s.navStatus !== 6;
+          case "anchored": return s.navStatus === 1 || s.navStatus === 5;   // at anchor / moored
+          case "distress": return s.navStatus != null && !!NAV_STATUS_ALERT[s.navStatus];
+          default:         return true;
+        }
+      }
+      function shipSortCmp(a, b) {
+        var dir = state.shipSortDesc ? -1 : 1;
+        function n(v, fallback) { return (v == null || isNaN(v)) ? fallback : v; }
+        switch (state.shipSort) {
+          case "spd":  return dir * (n(a.sog, -1) - n(b.sog, -1));
+          case "name": return dir * String(a.name || a.mmsi || "").localeCompare(String(b.name || b.mmsi || ""));
+          case "dist":
+          default:     return dir * (n(a.distNm, 1e9) - n(b.distNm, 1e9));
+        }
+      }
+
+      function setListOption(key, value) {
+        if (key === "filter") {
+          state.listFilter = value;
+          try { localStorage.setItem("list.filter", value); } catch (e) {}
+        } else if (key === "sort") {
+          if (state.listSort === value) {
+            state.listSortDesc = !state.listSortDesc;
+          } else {
+            state.listSort = value;
+            state.listSortDesc = (value === "alt" || value === "spd"); // default desc for numeric
+          }
+          try {
+            localStorage.setItem("list.sort", state.listSort);
+            localStorage.setItem("list.sortDesc", state.listSortDesc ? "1" : "0");
+          } catch (e) {}
+        } else if (key === "shipFilter") {
+          state.shipFilter = value;
+          try { localStorage.setItem("list.shipFilter", value); } catch (e) {}
+        } else if (key === "shipSort") {
+          if (state.shipSort === value) {
+            state.shipSortDesc = !state.shipSortDesc;
+          } else {
+            state.shipSort = value;
+            state.shipSortDesc = (value === "spd");
+          }
+          try {
+            localStorage.setItem("list.shipSort", state.shipSort);
+            localStorage.setItem("list.shipSortDesc", state.shipSortDesc ? "1" : "0");
+          } catch (e) {}
+        }
+        renderListControls();
+        renderList();
+      }
+
+      function renderListControls() {
+        var controls = document.getElementById("listControls");
+        if (!controls) return;
+        var planeFilters = [
+          { k: "all", label: "ALL" },
+          { k: "air", label: "AIR" },
+          { k: "ground", label: "GROUND" },
+          { k: "mil", label: "MIL" },
+          { k: "notable", label: "NOTABLE" },
+          { k: "emerg", label: "⚠" }
+        ];
+        var planeSorts = [
+          { k: "dist", label: "DIST" },
+          { k: "alt", label: "ALT" },
+          { k: "spd", label: "SPD" },
+          { k: "call", label: "A–Z" }
+        ];
+        var shipFilters = [
+          { k: "all", label: "ALL" },
+          { k: "underway", label: "UNDERWAY" },
+          { k: "anchored", label: "ANCHORED" },
+          { k: "distress", label: "DISTRESS" }
+        ];
+        var shipSorts = [
+          { k: "dist", label: "DIST" },
+          { k: "spd", label: "SPD" },
+          { k: "name", label: "A–Z" }
+        ];
+        var parts = [];
+        if (state.showAir) {
+          parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">AIR</span>' +
+            planeFilters.map(function (f) {
+              var active = state.listFilter === f.k ? " active" : "";
+              return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
+            }).join("") + '</div>');
+          parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
+            planeSorts.map(function (s) {
+              var active = state.listSort === s.k ? " active" : "";
+              var arrow = state.listSort === s.k ? (state.listSortDesc ? " ↓" : " ↑") : "";
+              return '<button class="chip' + active + '" data-k="' + s.k + '">' + s.label + arrow + '</button>';
+            }).join("") + '</div>');
+        }
+        if (state.showSea && state.aisKey) {
+          parts.push('<div class="chip-row" data-kind="ship-filter"><span class="chip-row-label">SEA</span>' +
+            shipFilters.map(function (f) {
+              var active = state.shipFilter === f.k ? " active" : "";
+              return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
+            }).join("") + '</div>');
+          parts.push('<div class="chip-row" data-kind="ship-sort"><span class="chip-row-label">SORT</span>' +
+            shipSorts.map(function (s) {
+              var active = state.shipSort === s.k ? " active" : "";
+              var arrow = state.shipSort === s.k ? (state.shipSortDesc ? " ↓" : " ↑") : "";
+              return '<button class="chip' + active + '" data-k="' + s.k + '">' + s.label + arrow + '</button>';
+            }).join("") + '</div>');
+        }
+        controls.innerHTML = parts.join("");
+        controls.querySelectorAll(".chip-row").forEach(function (row) {
+          var kind = row.dataset.kind;
+          row.querySelectorAll(".chip").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              var k = btn.dataset.k;
+              if (kind === "plane-filter") setListOption("filter", k);
+              else if (kind === "plane-sort") setListOption("sort", k);
+              else if (kind === "ship-filter") setListOption("shipFilter", k);
+              else if (kind === "ship-sort") setListOption("shipSort", k);
+            });
+          });
+        });
+      }
+
       function renderList() {
+        renderListControls();
         var html = "";
         if (!state.aisKey) {
           html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in settings to track vessels</div>';
         }
-        var ships = state.showSea && state.aisKey ? shipsInRange() : [];
-        var totalContacts = (state.showAir ? state.planes.length : 0) + ships.length;
+        var allShips = state.showSea && state.aisKey ? shipsInRange() : [];
+        var ships = allShips.filter(passesShipFilter).slice().sort(shipSortCmp);
+        var allPlanes = state.showAir ? state.planes.slice() : [];
+        var planes = allPlanes.filter(passesPlaneFilter).sort(planeSortCmp);
+        var totalContacts = planes.length + ships.length;
+        // Header counts — "AIR · 87/146" shows filtered vs total so the
+        // user sees at a glance how aggressive the current filter is.
+        var countBits = [];
+        if (state.showAir) countBits.push("AIR · " + planes.length + "/" + allPlanes.length);
+        if (state.showSea && state.aisKey) countBits.push("SEA · " + ships.length + "/" + allShips.length);
+        if (countBits.length) html += '<div class="list-count">' + countBits.join("  ·  ") + '</div>';
         if (totalContacts === 0) {
-          html += '<div class="empty">NO CONTACTS IN RANGE</div>';
+          html += '<div class="empty">NO CONTACTS MATCH FILTER</div>';
           listContainer.innerHTML = html;
           return;
         }
         html += '<div class="plane-list">';
-        if (state.showAir) {
-          state.planes.forEach(function (p) {
-            var alt = p.onGround ? "ground" : (p.altFt != null ? p.altFt.toLocaleString() + " ft" : "—");
-            var spd = p.gsKt != null ? Math.round(p.gsKt) + " kt" : "—";
-            var dist = p.distNm != null ? p.distNm.toFixed(1) + " NM" : "";
-            var sel = (p.hex && p.hex === state.selectedHex) ? " selected" : "";
-            html += '<div class="plane-row' + sel + '" data-kind="plane" data-id="' + escapeHtml(p.hex) + '">' +
-              '<div class="pr-badge"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.2 9 7l5.4 2.2v1.4L9 9.4l-.3 3.3 1.8 1.3v1L8 14.5l-2.5.5v-1l1.8-1.3L7 9.4 1.6 10.6V9.2L7 7z"/></svg></div>' +
-              '<div class="pr-body">' +
-                '<div class="pr-top">' +
-                  '<span class="pr-call">' + escapeHtml(p.callsign) + '</span>' +
-                  '<span class="pr-dist">' + escapeHtml(dist) + '</span>' +
-                '</div>' +
-                '<div class="pr-sub">AIR · ' + escapeHtml(alt) + ' · ' + escapeHtml(spd) + (p.type ? ' · ' + escapeHtml(p.type) : '') + '</div>' +
+        planes.forEach(function (p) {
+          var alt = p.onGround ? "ground" : (p.altFt != null ? p.altFt.toLocaleString() + " ft" : "—");
+          var spd = p.gsKt != null ? Math.round(p.gsKt) + " kt" : "—";
+          var dist = p.distNm != null ? p.distNm.toFixed(1) + " NM" : "";
+          var sel = (p.hex && p.hex === state.selectedHex) ? " selected" : "";
+          html += '<div class="plane-row' + sel + '" data-kind="plane" data-id="' + escapeHtml(p.hex) + '">' +
+            '<div class="pr-badge"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.2 9 7l5.4 2.2v1.4L9 9.4l-.3 3.3 1.8 1.3v1L8 14.5l-2.5.5v-1l1.8-1.3L7 9.4 1.6 10.6V9.2L7 7z"/></svg></div>' +
+            '<div class="pr-body">' +
+              '<div class="pr-top">' +
+                '<span class="pr-call">' + escapeHtml(p.callsign) + '</span>' +
+                '<span class="pr-dist">' + escapeHtml(dist) + '</span>' +
               '</div>' +
-            '</div>';
-          });
-        }
+              '<div class="pr-sub">AIR · ' + escapeHtml(alt) + ' · ' + escapeHtml(spd) + (p.type ? ' · ' + escapeHtml(p.type) : '') + '</div>' +
+            '</div>' +
+          '</div>';
+        });
         ships.forEach(function (s) {
           var spd = s.sog != null ? s.sog.toFixed(1) + " kt" : "—";
           var cog = s.cog != null ? Math.round(s.cog) + "°" : "—";
@@ -2697,6 +2954,10 @@
             if (vr != null) found.vertRate = vr;
             found.onGround = onGround;
             found.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
+            // Reset dead-reckoning base to the just-fetched ground truth.
+            found.baseLat = lat;
+            found.baseLon = lon;
+            found.baseAt = Date.now();
           }
           // …and always refresh the sticky selected-plane snapshot so the
           // trail/icon/route stay correct when the plane is outside the bbox.
@@ -2715,6 +2976,10 @@
           if (a.t) base2.type = a.t;
           if (a.squawk) base2.squawk = a.squawk;
           base2.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
+          // Reset dead-reckoning base to the just-fetched ground truth.
+          base2.baseLat = lat;
+          base2.baseLon = lon;
+          base2.baseAt = Date.now();
           state.selectedPlaneData = base2;
           if (base2.callsign && !state.routes[base2.callsign.toUpperCase()]) fetchRoute(base2.callsign);
           // Append to track history keyed by hex (works regardless of bbox).
@@ -3060,12 +3325,37 @@
 
         // --- event handlers ---
 
+        // Prune any stored pointer whose timestamp is older than `maxAgeMs`.
+        // Defends against lost pointerup/pointercancel events, which iOS
+        // Safari occasionally drops during fast multi-touch. The invariant:
+        // a real finger on screen emits pointermoves (even tiny ones); if
+        // `pointers[id]` hasn't been touched in maxAgeMs, treat it as lifted.
+        function sweepStalePointers(maxAgeMs) {
+          var now = Date.now();
+          var removed = [];
+          Object.keys(pointers).forEach(function (id) {
+            var p = pointers[id];
+            if ((now - (p.t || 0)) > maxAgeMs) {
+              delete pointers[id];
+              try { svg.releasePointerCapture(parseInt(id, 10)); } catch (e) {}
+              removed.push(id);
+            }
+          });
+          return removed;
+        }
+
         svg.addEventListener("pointerdown", function (e) {
           if (e.pointerType === "mouse" && e.button !== 0) return;
-          // Recover from any stuck state (dropped pointerup/pointercancel)
-          // before starting a new gesture.
+          // Before any mode transition, sweep any stuck pointers whose last
+          // move is > 1 s old. Backstop for dropped pointerup/pointercancel.
+          sweepStalePointers(1000);
+          // If the sweep emptied the pointer set but mode is still non-idle,
+          // reset the state machine so we start the new gesture from "idle".
           if (pointerCount() === 0 && mode !== "idle") resetAll();
-          pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+          // Defensive: if the same pointerId arrives again without cleanup
+          // (rare iOS duplicate), drop the old entry first.
+          if (e.pointerId in pointers) delete pointers[e.pointerId];
+          pointers[e.pointerId] = { x: e.clientX, y: e.clientY, t: Date.now() };
           var n = pointerCount();
           if (n === 1 && mode === "idle") {
             enterPan(e.pointerId, e.clientX, e.clientY, e.target);
@@ -3078,8 +3368,33 @@
           if (!(e.pointerId in pointers)) return;
           pointers[e.pointerId].x = e.clientX;
           pointers[e.pointerId].y = e.clientY;
+          pointers[e.pointerId].t = Date.now();
 
           if (mode === "pinch" && pinchStart) {
+            // Stale-pointer guard: if the OTHER stored pointer hasn't moved
+            // in 400 ms, iOS almost certainly ate its pointerup. Synthesize
+            // the lift, finish the pinch, and hand off to pan so the single
+            // remaining finger can actually pan instead of "continuing to zoom".
+            var now = Date.now();
+            var ids = Object.keys(pointers);
+            if (ids.length === 2) {
+              var staleId = null;
+              for (var k = 0; k < 2; k++) {
+                if (ids[k] !== String(e.pointerId) &&
+                    (now - (pointers[ids[k]].t || 0)) > 400) {
+                  staleId = ids[k];
+                  break;
+                }
+              }
+              if (staleId) {
+                delete pointers[staleId];
+                try { svg.releasePointerCapture(parseInt(staleId, 10)); } catch (err) {}
+                commitPinch();
+                enterPan(e.pointerId, e.clientX, e.clientY, null);
+                e.preventDefault();
+                return;
+              }
+            }
             var two = twoPointers();
             if (!two) return;
             var d = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
@@ -3149,7 +3464,9 @@
         svg.addEventListener("pointercancel", function (e) {
           // iOS occasionally delivers pointercancel instead of pointerup
           // when the system takes over the gesture (e.g. multi-app
-          // switcher, safari gestures). Reset everything to a clean idle.
+          // switcher, safari gestures). preventDefault so Safari doesn't
+          // keep the gesture; resetAll to land in a clean idle state.
+          e.preventDefault();
           delete pointers[e.pointerId];
           resetAll();
         });
@@ -3352,6 +3669,10 @@
               if (md.latitude != null && md.longitude != null) {
                 ship.lat = md.latitude;
                 ship.lon = md.longitude;
+                // Reset dead-reckoning base each time a fresh AIS position arrives.
+                ship.baseLat = md.latitude;
+                ship.baseLon = md.longitude;
+                ship.baseAt = Date.now();
               }
               if (msg.MessageType === "PositionReport") {
                 var pr = msg.Message && msg.Message.PositionReport;
@@ -3405,6 +3726,26 @@
             BoundingBoxes: [[bb[0], bb[1]]],
             FilterMessageTypes: ["PositionReport", "ShipStaticData"]
           }));
+          // Reset per-subscription diagnostics: bbox changed → new stream of
+          // messages, old counters would be misleading. Also restart the
+          // "no traffic after 30 s" downgrade timer.
+          state.aisBbox = bb;
+          state.aisMessageCount = 0;
+          state.aisFirstMsgAt = 0;
+          state.aisMsgTypes = {};
+          state.aisLastMsgType = "";
+          state.aisLoggedSamples = 0;
+          if (state.aisNoTrafficTimer) clearTimeout(state.aisNoTrafficTimer);
+          state.aisNoTrafficTimer = setTimeout(function () {
+            if (state.aisMessageCount === 0) {
+              aisStatus("AIS CONNECTED · NO TRAFFIC IN AREA (try moving the map or lowering range)", "ok");
+              renderAisDiag();
+            }
+          }, 30000);
+          aisStatus("AIS SUBSCRIBED · " +
+                    bb[0][0].toFixed(2) + "," + bb[0][1].toFixed(2) + " → " +
+                    bb[1][0].toFixed(2) + "," + bb[1][1].toFixed(2), "ok");
+          renderAisDiag();
         } catch (e) {}
       }
 
@@ -3551,6 +3892,57 @@
         _prevOnCenterChanged();
         onCenterOrRangeChanged();
       };
+
+      // Dead-reckoning motion tick. Advances every plane's display position
+      // forward by 1 s using its own reported track + ground speed. The base
+      // (baseLat/baseLon/baseAt) is reset by the bulk fetch handler and
+      // pollSelected, so this smooths motion BETWEEN fetches without ever
+      // drifting from ground truth by more than one fetch interval. Trails
+      // are not affected — accumulateTracks() uses raw-fetched positions.
+      //
+      // Guardrails: no advance if gsKt/track missing, onGround true, speed
+      // < 30 kt, or base is older than 120 s (stale data we shouldn't
+      // extrapolate indefinitely).
+      function advanceByDR(obj, speedField, headingField, baseOlderThanMs) {
+        var spd = obj[speedField];
+        var hdg = obj[headingField];
+        if (spd == null || hdg == null) return false;
+        if (obj.onGround) return false;
+        if (spd < 0.3) return false;
+        if (obj.baseAt == null) {
+          obj.baseAt = Date.now();
+          obj.baseLat = obj.lat;
+          obj.baseLon = obj.lon;
+          return false;
+        }
+        var dt = (Date.now() - obj.baseAt) / 1000;
+        if (dt <= 0 || dt > (baseOlderThanMs / 1000)) return false;
+        var nm = spd * (dt / 3600);
+        var rad = hdg * Math.PI / 180;
+        var dLat = (nm * Math.cos(rad)) / 60;
+        var dLon = (nm * Math.sin(rad)) /
+                   (60 * Math.max(0.01, Math.cos(obj.baseLat * Math.PI / 180)));
+        obj.lat = obj.baseLat + dLat;
+        obj.lon = obj.baseLon + dLon;
+        return true;
+      }
+      function deadReckonTick() {
+        var changed = false;
+        for (var i = 0; i < state.planes.length; i++) {
+          if (advanceByDR(state.planes[i], "gsKt", "trackDeg", 120000)) changed = true;
+        }
+        if (state.selectedPlaneData) {
+          if (advanceByDR(state.selectedPlaneData, "gsKt", "trackDeg", 120000)) changed = true;
+        }
+        var shipChanged = false;
+        var mmsiList = Object.keys(state.ships);
+        for (var s = 0; s < mmsiList.length; s++) {
+          if (advanceByDR(state.ships[mmsiList[s]], "sog", "cog", 300000)) shipChanged = true;
+        }
+        if (changed) { renderRadar(); renderOverlays(); }
+        if (shipChanged) { renderShips(); }
+      }
+      setInterval(deadReckonTick, 1000);
 
       // Re-render ships periodically (since positions don't redraw without it)
       setInterval(function () { if (state.aisKey) renderShips(); }, 5000);
