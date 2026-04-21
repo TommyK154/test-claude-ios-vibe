@@ -1,7 +1,8 @@
 # Air & Sea Tactical Radar
 
-A single-file, dependency-free browser radar for live ADS-B air traffic and
-(optionally) AIS vessel traffic, rendered over real satellite imagery.
+A dependency-free browser radar for live ADS-B air traffic and (optionally)
+AIS vessel traffic, rendered over real satellite imagery. Three source files
+(`index.html` + `app.css` + `app.js`), no build step.
 
 Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 
