@@ -272,6 +272,16 @@ data; the concentric rings are pure distance references (no clip-path).
   Do NOT "clean up" by dropping this filter. Raw `state.tracks` is kept
   intact so other future features (e.g. loiter scoring) can apply their
   own plausibility rules.
+- **Pinch-to-zoom regression (user-reported, unreproduced)**: after PR #10,
+  zoom sometimes behaves erratically (direction reverse on second pinch, or
+  zoom "continues" while the user tries to pan). Leading hypothesis: the
+  400 ms stale-partner synthetic-lift inside `pointermove` during pinch
+  (`setupRadarDrag`) is too aggressive — a human pause of one finger mid-
+  pinch trips the path that synthesizes a `pointerup` and hands off to pan.
+  Waiting on a clean repro before changing the threshold; user is watching
+  for the specific conditions. When changing, test that the ORIGINAL PR #10
+  bug (iOS eating `pointerup` → "continues to zoom, can't tap") does not
+  regress — that's what the sweep was added to fix.
 
 ## Roadmap
 

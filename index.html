@@ -643,37 +643,71 @@
       border-color: #ff9e4a;
       color: #ffbb80;
     }
+    /* Tappable variant for control chips (e.g. TREND length cycler). Kept at
+       44 CSS px min-height so the tap target meets the project's mobile-first
+       requirement; visual size is controlled by padding + font-size. */
+    button.sel-chip {
+      cursor: pointer;
+      min-height: 44px;
+      padding: 0 12px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button.sel-chip:hover, button.sel-chip:active {
+      background: var(--accent-soft);
+      border-color: var(--accent-dim);
+      color: var(--accent);
+    }
 
     .legend {
-      margin: 10px 0 0;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      border-radius: 4px;
-      overflow: hidden;
+      margin: 8px 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
     }
     .legend-toggle {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      width: 100%;
-      padding: 8px 12px;
-      background: transparent;
+      gap: 6px;
+      padding: 0 14px;
+      min-height: 44px;
+      background: var(--surface);
       color: var(--muted);
-      border: none;
+      border: 1px solid var(--border);
+      border-radius: 22px;
       font-family: var(--mono);
       font-size: 11px;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
       font-weight: 700;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
+    .legend-toggle:hover, .legend-toggle:active {
+      color: var(--text);
+      border-color: var(--border-2);
+    }
+    .legend-toggle .lg-q {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 1px solid currentColor;
+      font-size: 10px;
+      line-height: 1;
+    }
     .legend-body {
       display: none;
-      padding: 0 12px 10px;
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 4px;
       font-size: 12px;
       color: var(--text);
       line-height: 1.6;
+      box-sizing: border-box;
     }
     .legend.open .legend-body { display: block; }
     .legend.open .legend-toggle .chevron { transform: rotate(180deg); }
@@ -1100,15 +1134,16 @@
     </div>
 
     <div class="legend" id="legend">
-      <button type="button" class="legend-toggle" id="legendToggle" aria-expanded="false">
+      <button type="button" class="legend-toggle" id="legendToggle" aria-expanded="false" aria-label="Toggle legend">
+        <span class="lg-q" aria-hidden="true">?</span>
         <span>Legend</span>
         <span class="chevron" aria-hidden="true">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
         </span>
       </button>
       <div class="legend-body">
         <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
-        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Trend</span><span class="lg-v">5-minute projection at current speed &amp; heading</span></div>
+        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Trend</span><span class="lg-v">1 / 2 / 5 min projection at current speed &amp; heading · tap TREND chip on the selected card to cycle</span></div>
         <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
         <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold halo marks the selected contact</span></div>
         <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Pulsing red halo: squawk 7500 / 7600 / 7700</span></div>
@@ -1358,6 +1393,11 @@
         selectedMmsi: null,
         selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
         selectedMissLog: [],     // ring buffer of recent selected-plane render misses for self-reporting
+        trendMin: (function () {
+          // Trend vector projection length in minutes. User-cyclable on the card: 5 → 2 → 1 → 5.
+          try { var v = parseInt(localStorage.getItem("trend.minutes"), 10); if (v === 1 || v === 2 || v === 5) return v; } catch (e) {}
+          return 5;
+        })(),
         lastSelectedPlane: null, // grace-period snapshot after deselect so the marker doesn't disappear
         lastSelectedAt: 0,       // ms timestamp when lastSelectedPlane was set
         aircraftOwner: {}, // hex -> { operator, type, ... } from adsbdb.com, cached per selection
@@ -1455,8 +1495,14 @@
       var selectedCard = $("selectedCard");
       if (selectedCard) {
         selectedCard.addEventListener("click", function (e) {
-          var btn = e.target && e.target.closest && e.target.closest(".sel-close");
-          if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); }
+          var tgt = e.target && e.target.closest ? e.target : null;
+          var btn = tgt && tgt.closest(".sel-close");
+          if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); return; }
+          var chip = tgt && tgt.closest("[data-chip]");
+          if (chip) {
+            e.preventDefault(); e.stopPropagation();
+            if (chip.getAttribute("data-chip") === "trend") cycleTrendMin();
+          }
         });
       }
       var liveDot = $("liveDot");
@@ -1796,11 +1842,11 @@
         }
 
         if (sel.trackDeg != null && sel.gsKt != null && !sel.onGround && sel.gsKt > 20) {
-          // 5-minute trend vector: where the aircraft will be in 5 min at
-          // current groundspeed and track. Length is speed-proportional;
-          // at 480 kt that's 40 NM, at 120 kt it's 10 NM.
+          // Trend vector: where the aircraft will be in state.trendMin min at
+          // current groundspeed and track. User can cycle 5 / 2 / 1 via the
+          // TREND chip on the selected card (persisted to localStorage).
           var curV = project({ lat: sel.lat, lon: sel.lon });
-          var TREND_MIN = 5;
+          var TREND_MIN = state.trendMin || 5;
           var distNm = sel.gsKt * (TREND_MIN / 60);
           var lenRU = distNm * (100 / state.rangeNm);
           var rad = sel.trackDeg * Math.PI / 180;
@@ -2635,10 +2681,17 @@
         var dist = p.distNm != null ? p.distNm.toFixed(1) + " NM" : "—";
         var typ = p.type || "—";
         var sq  = p.squawk || "—";
-        var reg = p.registration ? escapeHtml(p.registration) : "";
         var hexLower = (p.hex || "").toLowerCase();
         var hexUpper = (p.hex || "").toUpperCase();
         var callsign = (p.callsign || "").toString();
+        var headline = callsign || hexUpper;
+        // Suppress the small-line registration when it would just duplicate the
+        // headline (e.g. private planes whose callsign is their N-number).
+        var reg = "";
+        if (p.registration) {
+          var regRaw = String(p.registration);
+          if (regRaw.toUpperCase() !== headline.toUpperCase()) reg = escapeHtml(regRaw);
+        }
         var statusRowHtml = renderLoadingRow(hexLower, callsign.toUpperCase());
         var photoHtml = renderPhotoBlock(p.hex);
         var routeHtml = renderRouteBlock(callsign.toUpperCase());
@@ -2655,17 +2708,20 @@
           alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
         }
         var anomaliesHtml = renderAnomalyChips(p);
+        var controlChipsHtml = renderControlChips();
         var missStrip = renderMissStrip();
+        var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
           CLOSE_BUTTON_HTML +
           missStrip +
           statusRowHtml +
           '<div class="sel-head">' +
-            '<span class="sel-call">' + escapeHtml(callsign || hexUpper) + '</span>' +
-            '<span class="sel-reg">' + reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "") + '</span>' +
+            '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
+            (subtitle ? '<span class="sel-reg">' + subtitle + '</span>' : '') +
           '</div>' +
           alertsHtml +
           anomaliesHtml +
+          controlChipsHtml +
           routeHtml +
           photoHtml +
           '<div class="sel-grid">' +
@@ -2691,7 +2747,6 @@
         return '<div class="loading-row">' +
           seg("TRACK", trackStatus.text, trackStatus.loading) +
           seg("ROUTE", routeStatus.text, routeStatus.loading) +
-          seg("PHOTO", photoStatus.text, photoStatus.loading) +
         '</div>';
       }
       function trackStatusText(hex) {
@@ -2726,6 +2781,29 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
+      // Tappable controls that live on the selected card — currently just the
+      // trend-vector length cycler. Each render reads state, so the chip
+      // reflects the current setting without needing explicit refresh wiring.
+      function renderControlChips() {
+        var tm = state.trendMin || 5;
+        return '<div class="sel-chips sel-chips-controls">' +
+          '<button type="button" class="sel-chip" data-chip="trend" aria-label="Cycle trend length">' +
+            'TREND · ' + tm + ' MIN' +
+          '</button>' +
+        '</div>';
+      }
+
+      // Called when the TREND chip is tapped: cycles 5 → 2 → 1 → 5 and persists.
+      function cycleTrendMin() {
+        var order = [5, 2, 1];
+        var cur = state.trendMin || 5;
+        var idx = order.indexOf(cur);
+        state.trendMin = order[(idx + 1) % order.length];
+        try { localStorage.setItem("trend.minutes", String(state.trendMin)); } catch (e) {}
+        renderOverlays();
+        renderSelected();
+      }
+
       function renderAnomalyChips(p) {
         var chips = [];
         if (!p.onGround) {
@@ -2746,10 +2824,11 @@
       }
 
       function renderRouteBlock(callsign) {
+        // Sad-state (no route, loading, not found) is already communicated by
+        // the ROUTE chip in the loading-row strip — don't duplicate it as a
+        // full-width block. Only render when we have a resolved origin+dest.
         var r = state.routes[callsign];
-        if (!r) return '<div class="sel-route sel-route-empty">ROUTE · —</div>';
-        if (r.state === "loading") return '<div class="sel-route sel-route-empty">ROUTE · LOOKING UP…</div>';
-        if (r.state !== "ok") return '<div class="sel-route sel-route-empty">ROUTE · UNKNOWN</div>';
+        if (!r || r.state !== "ok") return "";
         var o = r.origin, d = r.destination;
         var oCode = escapeHtml(o.iata || o.icao || "");
         var dCode = escapeHtml(d.iata || d.icao || "");
