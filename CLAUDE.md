@@ -246,11 +246,25 @@ data; the concentric rings are pure distance references (no clip-path).
 
 - **`COPY DIAGNOSTIC` button** in the settings panel snapshots session state
   to the clipboard as JSON. Used for bug reports — pasted output includes
-  center, range, active fetch source / cadence, last fetch & error, plane &
-  ship counts, list filter/sort state, selected contact with sampled track
-  (first 10 + last 10 points) and AIS bbox + message counters. `state.aisKey`
-  is deliberately excluded. When a user reports a bug, ask them to paste the
-  diagnostic rather than describe symptoms — it's the ground truth.
+  viewport, range, active fetch source / cadence, last fetch & error, plane &
+  ship counts, list filter/sort state, `trendMin`, selected contact with
+  sampled track (first 10 + last 10 points), **`selectedRoute`** (raw
+  `state.routes[callsign]` entry for verifying adsbdb.com responses against
+  rendered output), `selectedMissLog`, and AIS bbox + message counters. When
+  a user reports a bug, ask them to paste the diagnostic rather than describe
+  symptoms — it's the ground truth.
+- **Privacy rules for the diagnostic payload** — the app is public on GitHub,
+  so bug reports must not leak personal fingerprint:
+  - `navigator.userAgent` is **never** included (OS + browser + device
+    fingerprint).
+  - `state.center.lat` / `state.center.lon` and `ais.bbox` coords are
+    **rounded to 3 decimals** (≈370 ft / 0.06 NM). Enough to identify
+    neighborhood / metro area for debugging, not enough to identify a home.
+  - `state.aisKey` is **never** included.
+  - Plane / ship positions in track samples stay at full precision — they're
+    public aviation / maritime data, not the user's location.
+  - When adding new fields to `copyDiagnostic`, audit them against this list.
+    Err on the side of omitting anything device- or location-specific.
 
 ## Known Issues / In-flight investigations
 
