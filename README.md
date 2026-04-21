@@ -26,7 +26,25 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 Open the URL above on any modern browser. On iPhone Safari, use the Share
 icon → **Add to Home Screen** for a fullscreen, app-like experience.
 
+## Ship tracking (optional)
+
+Ship (AIS) tracking uses [aisstream.io](https://aisstream.io/apikeys). It's
+free but requires your own API key:
+
+1. Sign up at `https://aisstream.io/apikeys` (~30 seconds).
+2. Copy the generated key.
+3. On the radar, tap the **⚙** button in the header.
+4. Paste your key into the input, tap **SAVE**.
+
+The key is stored only in your browser's `localStorage` (under
+`aisstream.key`) and is only sent directly to aisstream.io's WebSocket. You
+can wipe it at any time with the **CLEAR** button in the same panel.
+
+Once saved, a segmented `BOTH / AIR / SEA` toggle appears above the radar
+to switch between layers. Ships appear in amber with course/heading/speed.
+
 ## Data
 
 Flight data is fetched live from public ADS-B APIs on every refresh and is
-not stored. No analytics, no accounts, no backend.
+not stored. AIS ship data is only live while the WebSocket is connected.
+No analytics, no accounts, no backend — everything runs in your browser.
