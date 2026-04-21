@@ -565,10 +565,16 @@
     }
     .sel-head {
       display: flex;
-      align-items: baseline;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 8px;
+    }
+    .sel-head-row {
+      display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 10px;
-      margin-bottom: 8px;
+      min-height: 32px;
     }
     .sel-call {
       font-size: 20px;
@@ -652,6 +658,19 @@
       padding: 0 12px;
       -webkit-tap-highlight-color: transparent;
     }
+    /* Inline variant lives inside sel-head-row next to the callsign. Visually
+       compact via negative vertical padding but preserves the 44 px tap target
+       via invisible padding — pseudo-element expands the hit region. */
+    button.sel-chip.sel-chip-inline {
+      min-height: 0;
+      padding: 6px 10px;
+      position: relative;
+    }
+    button.sel-chip.sel-chip-inline::before {
+      content: "";
+      position: absolute;
+      inset: -8px;
+    }
     button.sel-chip:hover, button.sel-chip:active {
       background: var(--accent-soft);
       border-color: var(--accent-dim);
@@ -659,7 +678,7 @@
     }
 
     .legend {
-      margin: 8px 0 0;
+      margin: 8px 0 16px;
       display: flex;
       flex-direction: column;
       align-items: flex-end;
@@ -755,12 +774,34 @@
       font-size: 14px;
       letter-spacing: 0.08em;
     }
+    .sel-route .sel-airport-icao {
+      color: #ff4ddb;
+      opacity: 0.55;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      margin-left: 4px;
+    }
     .sel-route .sel-arrow { color: #ff4ddb; font-weight: 700; }
     .sel-route .sel-airport-names {
       flex-basis: 100%;
       font-family: var(--sans);
       font-size: 11px;
       color: var(--muted);
+    }
+    .sel-route-warn {
+      flex-basis: 100%;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #ffbb80;
+      background: rgba(255, 158, 74, 0.12);
+      border: 1px solid #ff9e4a;
+      border-radius: 3px;
+      padding: 3px 8px;
+      margin-top: 4px;
     }
     .sel-route-empty {
       color: var(--muted);
@@ -1035,7 +1076,7 @@
       </div>
       <div class="setting-block">
         <label>Bug reporting</label>
-        <p class="setting-help">Copies a compact JSON snapshot of your current session (center, range, selected contact + sampled track, AIS counters) to the clipboard. Paste into a GitHub issue when reporting a bug so the exact state is captured. Your aisstream key is never included.</p>
+        <p class="setting-help">Copies a compact JSON snapshot of your current session (center, range, selected contact + sampled track, AIS counters) to the clipboard. Paste into a GitHub issue when reporting a bug so the exact state is captured. Privacy: your user agent is not included; map center and AIS bounding box are rounded to ~370 ft so your exact location is not exposed; your aisstream key is never included.</p>
         <div class="setting-row">
           <button type="button" id="copyDiagnosticBtn" class="btn-primary">COPY DIAGNOSTIC</button>
         </div>
@@ -1393,6 +1434,7 @@
         selectedMmsi: null,
         selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
         selectedMissLog: [],     // ring buffer of recent selected-plane render misses for self-reporting
+        lastPollSelectedAt: 0,   // ms timestamp of last pollSelected write; gates bulk-fetch overwrites of the selected plane's position
         trendMin: (function () {
           // Trend vector projection length in minutes. User-cyclable on the card: 5 → 2 → 1 → 5.
           try { var v = parseInt(localStorage.getItem("trend.minutes"), 10); if (v === 1 || v === 2 || v === 5) return v; } catch (e) {}
@@ -1629,6 +1671,37 @@
         return (R * c) / NM_TO_KM;
       }
 
+      // Initial great-circle bearing from (lat1, lon1) to (lat2, lon2) in degrees
+      // from true north, [0, 360). Used to cross-check a filed route's destination
+      // direction against the plane's current trackDeg — callsign reuse at
+      // adsbdb.com occasionally leaves a stale filed route attached to the hex.
+      function bearingDeg(lat1, lon1, lat2, lon2) {
+        var toRad = Math.PI / 180;
+        var phi1 = lat1 * toRad, phi2 = lat2 * toRad;
+        var dLon = (lon2 - lon1) * toRad;
+        var y = Math.sin(dLon) * Math.cos(phi2);
+        var x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
+        var brng = Math.atan2(y, x) / toRad;
+        return (brng + 360) % 360;
+      }
+
+      // Returns whether a filed route looks implausible given the plane's current
+      // heading — i.e. the bearing to the destination is >90° off from where the
+      // plane is actually pointed, AND the plane is >50 NM from the destination
+      // (so final-approach turns don't trigger false positives). Returns null if
+      // we don't have enough data to judge.
+      function routePlausibility(plane, route) {
+        if (!plane || !route || route.state !== "ok") return null;
+        if (!plane.lat || !plane.lon || plane.trackDeg == null) return null;
+        var d = route.destination;
+        if (!d || !isFinite(d.lat) || !isFinite(d.lon)) return null;
+        var distToDest = haversineNm(plane.lat, plane.lon, d.lat, d.lon);
+        if (distToDest < 50) return { ok: true, distToDest: distToDest };
+        var brg = bearingDeg(plane.lat, plane.lon, d.lat, d.lon);
+        var diff = Math.abs(((brg - plane.trackDeg + 540) % 360) - 180); // [0, 180]
+        return { ok: diff <= 90, distToDest: distToDest, bearingDiff: diff };
+      }
+
       function normalizeReadsb(raw) {
         var arr = (raw && (raw.ac || raw.aircraft)) || [];
         var out = [];
@@ -1732,9 +1805,14 @@
 
       function accumulateTracks() {
         var now = Date.now();
+        // pollSelected is authoritative for the selected plane's track while it's
+        // actively polling — skip here so bulk-fetch positions don't flip-flop the
+        // history against the hex-endpoint positions (the A-B-A-B artifact).
+        var selFresh = state.selectedHex && (now - state.lastPollSelectedAt) < 6000;
         for (var i = 0; i < state.planes.length; i++) {
           var p = state.planes[i];
           if (!p.hex || p.lat == null || p.lon == null) continue;
+          if (selFresh && p.hex === state.selectedHex) continue;
           var arr = state.tracks[p.hex] || (state.tracks[p.hex] = []);
           var last = arr.length ? arr[arr.length - 1] : null;
           if (last && Math.abs(last.lat - p.lat) < 0.0001 && Math.abs(last.lon - p.lon) < 0.0001) continue;
@@ -1797,7 +1875,14 @@
         }
 
         var route = state.routes[(sel.callsign || "").toUpperCase()];
-        if (route && route.state === "ok" && route.origin.lat && route.destination.lat) {
+        // Suppress pink route geometry if the filed route looks implausible
+        // relative to the plane's current heading (callsign-reuse artifact).
+        // Card still shows the text route with a UNCERTAIN tag — geometry on
+        // the radar gets suppressed because it'd mislead the user by drawing
+        // a triangle to a destination the plane isn't going to.
+        var routePlaus = routePlausibility(sel, route);
+        var routeConfident = !routePlaus || routePlaus.ok !== false;
+        if (routeConfident && route && route.state === "ok" && route.origin.lat && route.destination.lat) {
           var cur = project({ lat: sel.lat, lon: sel.lon });
           var org = project({ lat: route.origin.lat, lon: route.origin.lon });
           var dst = project({ lat: route.destination.lat, lon: route.destination.lon });
@@ -1959,17 +2044,24 @@
           // the previously-good lat/lon with undefined and the marker would
           // vanish until the /hex/{hex} fast-poll recovered it 5-10 s later.
           if (state.selectedHex) {
+            // pollSelected (adsb.fi /hex/{hex} @ 5 s) is authoritative for the
+            // selected plane's position. Skip bulk-fetch's position merge if it
+            // wrote within the last 6 s — otherwise the two sources race and
+            // produce the A-B-A-B flip-flop we saw in issue #14.
+            var selFreshBulk = (nowMs - state.lastPollSelectedAt) < 6000;
             for (var spi = 0; spi < state.planes.length; spi++) {
               var fresh = state.planes[spi];
               if (fresh.hex !== state.selectedHex) continue;
               var target = state.selectedPlaneData || {};
-              if (isFinite(fresh.lat) && isFinite(fresh.lon)) {
+              if (!selFreshBulk && isFinite(fresh.lat) && isFinite(fresh.lon)) {
                 target.lat = fresh.lat;
                 target.lon = fresh.lon;
                 target.baseLat = fresh.lat;
                 target.baseLon = fresh.lon;
                 target.baseAt = nowMs;
               }
+              // Non-positional fields (altitude, speed, heading, callsign metadata)
+              // merge regardless — they don't cause visual jumps.
               ["altFt","gsKt","trackDeg","vertRate","callsign","registration","type","squawk","distNm","onGround","hex","flight"].forEach(function (k) {
                 if (fresh[k] != null) target[k] = fresh[k];
               });
@@ -2619,7 +2711,9 @@
           selectedCard.innerHTML =
             CLOSE_BUTTON_HTML +
             '<div class="sel-head">' +
-              '<span class="sel-call">' + name + '</span>' +
+              '<div class="sel-head-row">' +
+                '<span class="sel-call">' + name + '</span>' +
+              '</div>' +
               '<span class="sel-reg">MMSI ' + escapeHtml(s.mmsi) + (country ? ' · ' + escapeHtml(country) : '') + '</span>' +
             '</div>' +
             shipAlerts +
@@ -2708,7 +2802,7 @@
           alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
         }
         var anomaliesHtml = renderAnomalyChips(p);
-        var controlChipsHtml = renderControlChips();
+        var controlChipHtml = renderControlChips();
         var missStrip = renderMissStrip();
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
@@ -2716,12 +2810,14 @@
           missStrip +
           statusRowHtml +
           '<div class="sel-head">' +
-            '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
+            '<div class="sel-head-row">' +
+              '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
+              controlChipHtml +
+            '</div>' +
             (subtitle ? '<span class="sel-reg">' + subtitle + '</span>' : '') +
           '</div>' +
           alertsHtml +
           anomaliesHtml +
-          controlChipsHtml +
           routeHtml +
           photoHtml +
           '<div class="sel-grid">' +
@@ -2781,16 +2877,15 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Tappable controls that live on the selected card — currently just the
-      // trend-vector length cycler. Each render reads state, so the chip
-      // reflects the current setting without needing explicit refresh wiring.
+      // Returns the TREND length chip rendered inline in the plane card's
+      // sel-head row (right side, next to the callsign). Tapping it cycles
+      // 5 → 2 → 1 → 5. Ships don't emit this in this PR; the sel-head row
+      // layout accommodates them for a future ship-trend picker.
       function renderControlChips() {
         var tm = state.trendMin || 5;
-        return '<div class="sel-chips sel-chips-controls">' +
-          '<button type="button" class="sel-chip" data-chip="trend" aria-label="Cycle trend length">' +
-            'TREND · ' + tm + ' MIN' +
-          '</button>' +
-        '</div>';
+        return '<button type="button" class="sel-chip sel-chip-inline" data-chip="trend" aria-label="Cycle trend length">' +
+          'TREND · ' + tm + ' MIN' +
+        '</button>';
       }
 
       // Called when the TREND chip is tapped: cycles 5 → 2 → 1 → 5 and persists.
@@ -2830,13 +2925,33 @@
         var r = state.routes[callsign];
         if (!r || r.state !== "ok") return "";
         var o = r.origin, d = r.destination;
-        var oCode = escapeHtml(o.iata || o.icao || "");
-        var dCode = escapeHtml(d.iata || d.icao || "");
+        // Show IATA prominently, but also render the ICAO in a de-emphasized
+        // segment when it differs. Makes the airport identity unambiguous for
+        // bug triage — if we displayed "SFO → TKF" we want to be certain which
+        // TKF. Helps distinguish a render-mapping bug from an upstream data bug.
+        function code(ap) {
+          var iata = ap.iata || "";
+          var icao = ap.icao || "";
+          if (iata && icao && iata !== icao) {
+            return '<span class="sel-airport">' + escapeHtml(iata) + '</span>' +
+                   '<span class="sel-airport-icao">' + escapeHtml(icao) + '</span>';
+          }
+          return '<span class="sel-airport">' + escapeHtml(iata || icao) + '</span>';
+        }
+        // Plausibility: if the plane's current heading contradicts the bearing
+        // to the destination by >90° AND the plane is >50 NM from destination,
+        // tag the route UNCERTAIN so the user knows it may be stale (adsbdb.com
+        // callsign reuse: NetJets etc. recycle callsigns across multiple legs).
+        var plaus = routePlausibility(state.selectedPlaneData, r);
+        var warnHtml = (plaus && plaus.ok === false)
+          ? '<span class="sel-route-warn">⚠ UNCERTAIN · heading doesn’t match destination</span>'
+          : '';
         return '<div class="sel-route">' +
-          '<span class="sel-airport">' + oCode + '</span>' +
+          code(o) +
           '<span class="sel-arrow">→</span>' +
-          '<span class="sel-airport">' + dCode + '</span>' +
+          code(d) +
           '<span class="sel-airport-names">' + escapeHtml(o.name || "") + ' → ' + escapeHtml(d.name || "") + '</span>' +
+          warnHtml +
           '</div>';
       }
 
@@ -3191,6 +3306,9 @@
           base2.baseLon = lon;
           base2.baseAt = Date.now();
           state.selectedPlaneData = base2;
+          // Mark pollSelected as authoritative for the next 6 s so bulk-fetch
+          // and accumulateTracks don't write a competing position.
+          state.lastPollSelectedAt = Date.now();
           if (base2.callsign && !state.routes[base2.callsign.toUpperCase()]) fetchRoute(base2.callsign);
           // Append to track history keyed by hex (works regardless of bbox).
           var tkey = hex.toLowerCase();
@@ -3774,15 +3892,26 @@
       }
 
       // Builds a compact JSON snapshot of live session state for bug reports.
-      // Samples the selected contact's track (first 10 + last 10 points) so the
-      // output stays under ~8 KB even when state.tracks has hit its 500-point
-      // cap. state.aisKey is deliberately excluded — keep it that way.
+      // Privacy rules: no user agent (OS + browser fingerprint), map center
+      // and AIS bbox are rounded to 3 decimals (~370 ft — strips exact-address
+      // precision while keeping neighborhood signal for debugging), aisstream
+      // key is never included. Track samples (planes' own lat/lon) are public
+      // data and kept at full precision.
       function copyDiagnostic() {
         var statusEl = document.getElementById("copyDiagStatus");
         function setStatus(text, cls) {
           if (!statusEl) return;
           statusEl.textContent = text;
           statusEl.className = "ais-status" + (cls ? " " + cls : "");
+        }
+        function round3(n) { return (typeof n === "number" && isFinite(n)) ? Math.round(n * 1000) / 1000 : n; }
+        function roundCenter(c) {
+          if (!c) return c;
+          return { lat: round3(c.lat), lon: round3(c.lon), label: c.label, id: c.id };
+        }
+        function roundBbox(b) {
+          if (!b || !b.length) return b;
+          return b.map(function (pair) { return pair.map(round3); });
         }
         var selHex = state.selectedHex;
         var tr = selHex ? (state.tracks[selHex] || []) : [];
@@ -3794,11 +3923,13 @@
         var shipTrackSample = st.length > 20
           ? st.slice(0, 10).concat(st.slice(-10))
           : st.slice();
+        var selCall = state.selectedPlaneData && state.selectedPlaneData.callsign
+          ? state.selectedPlaneData.callsign.toString().toUpperCase() : null;
+        var selRoute = selCall ? state.routes[selCall] || null : null;
         var diag = {
           ts: new Date().toISOString(),
-          ua: navigator.userAgent,
           vp: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
-          center: state.center,
+          center: roundCenter(state.center),
           rangeNm: state.rangeNm,
           activeSource: state.activeSource,
           refreshMs: (typeof currentRefreshMs === "function") ? currentRefreshMs() : null,
@@ -3810,9 +3941,11 @@
           showSea: state.showSea,
           listFilter: state.listFilter,
           listSort: state.listSort,
+          trendMin: state.trendMin,
           selectedHex: selHex,
           selectedMmsi: selMmsi,
           selectedPlaneData: state.selectedPlaneData,
+          selectedRoute: selRoute,
           selectedMissLog: (state.selectedMissLog || []).slice(-25),
           selectedMissTotal: (state.selectedMissLog || []).length,
           selectedTrackSample: trackSample,
@@ -3822,7 +3955,7 @@
           ais: {
             keyPresent: !!state.aisKey,
             connected: !!(state.aisSocket && state.aisSocket.readyState === 1),
-            bbox: state.aisBbox,
+            bbox: roundBbox(state.aisBbox),
             msgCount: state.aisMessageCount,
             firstMsgAt: state.aisFirstMsgAt,
             msgTypes: state.aisMsgTypes,
