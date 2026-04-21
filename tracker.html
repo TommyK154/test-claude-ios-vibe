@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#faf8f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Flights</title>
+  <style>
+    :root {
+      --bg: #faf8f5;
+      --surface: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #ebe7df;
+      --accent: #4a7c6e;
+      --accent-soft: #dcebe4;
+      --shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+      --radar-bg: #0f1b17;
+      --radar-ring: rgba(255, 255, 255, 0.08);
+      --radar-grid: rgba(255, 255, 255, 0.05);
+      --radar-label: rgba(255, 255, 255, 0.42);
+      --plane: #6ec49b;
+      --plane-selected: #f5c76a;
+      --plane-ground: #8b8b8b;
+      --danger: #b85c5c;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.45;
+      min-height: 100vh;
+    }
+
+    .app {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: calc(16px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom));
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 0 14px 0 10px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      text-decoration: none;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease;
+    }
+    .back-link:active { background: var(--accent-soft); }
+    .page-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .page-title .ico { font-size: 20px; }
+
+    .controls {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+    .controls h2 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .preset {
+      min-height: 36px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+    }
+    .preset.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .preset:active { transform: scale(0.97); }
+
+    .coord-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .coord {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .coord label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+    .coord input {
+      min-height: 44px;
+      padding: 10px 12px;
+      font-size: 15px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-variant-numeric: tabular-nums;
+    }
+    .coord input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .range-row label {
+      flex: 0 0 auto;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+    .range-row input[type=range] {
+      flex: 1;
+      min-height: 44px;
+      accent-color: var(--accent);
+    }
+    .range-row .range-val {
+      flex: 0 0 auto;
+      min-width: 58px;
+      text-align: right;
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .radar-card {
+      background: var(--radar-bg);
+      border-radius: 18px;
+      padding: 12px;
+      margin-bottom: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .radar-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      touch-action: manipulation;
+    }
+    .radar-overlay {
+      position: absolute;
+      top: 16px; left: 18px; right: 18px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.55);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+    .radar-overlay .rcount { color: var(--plane); }
+
+    .selected-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+    .sel-empty { color: var(--muted); font-size: 14px; text-align: center; padding: 4px 0; }
+    .sel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .sel-call {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .sel-reg {
+      font-size: 13px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .sel-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .sel-cell { display: flex; flex-direction: column; gap: 2px; }
+    .sel-cell .k {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .sel-cell .v {
+      font-size: 15px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .status-row .left { display: flex; align-items: center; gap: 8px; }
+    .dot-live {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 var(--accent);
+      animation: pulse 2s infinite;
+    }
+    .dot-live.err { background: var(--danger); animation: none; }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(74, 124, 110, 0.55); }
+      70%  { box-shadow: 0 0 0 7px rgba(74, 124, 110, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(74, 124, 110, 0); }
+    }
+    .refresh-btn {
+      min-height: 36px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .refresh-btn:disabled { opacity: 0.5; cursor: wait; }
+    .refresh-btn:active { background: var(--accent-soft); }
+
+    .plane-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .plane-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease, border-color 160ms ease, transform 140ms ease;
+    }
+    .plane-row:active { transform: scale(0.995); }
+    .plane-row.selected { background: var(--accent-soft); border-color: var(--accent); }
+    .pr-badge {
+      flex: 0 0 auto;
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .pr-body { flex: 1; min-width: 0; }
+    .pr-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .pr-call {
+      font-weight: 700;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pr-dist {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .pr-sub {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+    }
+
+    .empty, .error {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .error { border-color: rgba(184, 92, 92, 0.35); color: var(--danger); }
+    .empty .e-emoji { font-size: 28px; margin-bottom: 6px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <a href="index.html" class="back-link" aria-label="Back to Habits">
+        <span aria-hidden="true">←</span>
+        <span>Habits</span>
+      </a>
+      <div class="page-title"><span class="ico" aria-hidden="true">✈</span><span>Flights</span></div>
+      <span style="width:72px"></span>
+    </div>
+
+    <div class="controls">
+      <h2>Location</h2>
+      <div class="preset-row" id="presetRow"></div>
+      <div class="coord-row">
+        <div class="coord">
+          <label for="latInput">Latitude</label>
+          <input id="latInput" type="number" step="0.0001" min="-90" max="90" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="coord">
+          <label for="lonInput">Longitude</label>
+          <input id="lonInput" type="number" step="0.0001" min="-180" max="180" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+      <div class="range-row">
+        <label for="rangeInput">Range</label>
+        <input id="rangeInput" type="range" min="10" max="250" step="10" value="50">
+        <span class="range-val" id="rangeVal">50 NM</span>
+      </div>
+    </div>
+
+    <div class="radar-card">
+      <div class="radar-overlay">
+        <span id="radarLoc">—</span>
+        <span class="rcount"><span id="radarCount">0</span> aircraft</span>
+      </div>
+      <svg class="radar-svg" id="radar" viewBox="-110 -110 220 220" aria-label="Aircraft radar">
+        <defs>
+          <clipPath id="radarClip"><circle cx="0" cy="0" r="100"/></clipPath>
+        </defs>
+        <g id="radarGrid">
+          <circle cx="0" cy="0" r="100" fill="none" stroke="var(--radar-ring)" stroke-width="0.8"/>
+          <circle cx="0" cy="0" r="75" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <circle cx="0" cy="0" r="50" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <circle cx="0" cy="0" r="25" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <line x1="-100" y1="0" x2="100" y2="0" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <line x1="0" y1="-100" x2="0" y2="100" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <circle cx="0" cy="0" r="1.5" fill="var(--plane)"/>
+          <text x="0" y="-104" text-anchor="middle" fill="var(--radar-label)" font-size="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">N</text>
+          <text x="104" y="2.5" text-anchor="start" fill="var(--radar-label)" font-size="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">E</text>
+          <text x="0" y="109" text-anchor="middle" fill="var(--radar-label)" font-size="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">S</text>
+          <text x="-104" y="2.5" text-anchor="end" fill="var(--radar-label)" font-size="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">W</text>
+          <text id="r1lbl" x="27" y="-1" fill="var(--radar-label)" font-size="5.5" font-family="-apple-system, BlinkMacSystemFont, sans-serif"></text>
+          <text id="r2lbl" x="52" y="-1" fill="var(--radar-label)" font-size="5.5" font-family="-apple-system, BlinkMacSystemFont, sans-serif"></text>
+          <text id="r3lbl" x="77" y="-1" fill="var(--radar-label)" font-size="5.5" font-family="-apple-system, BlinkMacSystemFont, sans-serif"></text>
+        </g>
+        <g id="planeLayer" clip-path="url(#radarClip)"></g>
+      </svg>
+    </div>
+
+    <div class="selected-card" id="selectedCard">
+      <div class="sel-empty">Tap a plane to see details</div>
+    </div>
+
+    <div class="status-row">
+      <div class="left">
+        <span class="dot-live" id="liveDot"></span>
+        <span id="statusText">Loading…</span>
+      </div>
+      <button class="refresh-btn" id="refreshBtn" type="button">Refresh</button>
+    </div>
+
+    <div id="listContainer"></div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var PRESETS = [
+        { id: "sfo", label: "San Francisco", lat: 37.6188, lon: -122.3754 },
+        { id: "lax", label: "Los Angeles",   lat: 33.9416, lon: -118.4085 },
+        { id: "jfk", label: "New York",      lat: 40.6413, lon: -73.7781 },
+        { id: "ord", label: "Chicago",       lat: 41.9742, lon: -87.9073 },
+        { id: "lhr", label: "London",        lat: 51.4700, lon: -0.4543 },
+        { id: "cdg", label: "Paris",         lat: 49.0097, lon: 2.5479 },
+        { id: "hnd", label: "Tokyo",         lat: 35.5523, lon: 139.7798 },
+        { id: "sin", label: "Singapore",     lat: 1.3644,  lon: 103.9915 }
+      ];
+
+      var API_HOSTS = [
+        "https://opendata.adsb.fi/api/v2",
+        "https://api.adsb.lol/v2"
+      ];
+
+      var REFRESH_MS = 30000;
+      var NM_TO_KM = 1.852;
+
+      var state = {
+        center: { lat: PRESETS[0].lat, lon: PRESETS[0].lon, label: PRESETS[0].label, id: PRESETS[0].id },
+        rangeNm: 50,
+        planes: [],
+        selectedHex: null,
+        lastFetch: 0,
+        lastError: null,
+        fetching: false,
+        refreshTimer: null,
+        countdownTimer: null,
+        nextFetchAt: 0
+      };
+
+      var $ = function (id) { return document.getElementById(id); };
+
+      var presetRow = $("presetRow");
+      var latInput = $("latInput");
+      var lonInput = $("lonInput");
+      var rangeInput = $("rangeInput");
+      var rangeVal = $("rangeVal");
+      var radarLoc = $("radarLoc");
+      var radarCount = $("radarCount");
+      var planeLayer = $("planeLayer");
+      var selectedCard = $("selectedCard");
+      var liveDot = $("liveDot");
+      var statusText = $("statusText");
+      var refreshBtn = $("refreshBtn");
+      var listContainer = $("listContainer");
+      var r1lbl = $("r1lbl");
+      var r2lbl = $("r2lbl");
+      var r3lbl = $("r3lbl");
+
+      function escapeHtml(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+          return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+        });
+      }
+
+      function buildPresets() {
+        presetRow.innerHTML = "";
+        var geoBtn = document.createElement("button");
+        geoBtn.type = "button";
+        geoBtn.className = "preset";
+        geoBtn.textContent = "📍 My location";
+        geoBtn.addEventListener("click", useGeolocation);
+        presetRow.appendChild(geoBtn);
+
+        PRESETS.forEach(function (p) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "preset" + (state.center.id === p.id ? " active" : "");
+          b.dataset.id = p.id;
+          b.textContent = p.label;
+          b.addEventListener("click", function () {
+            state.center = { lat: p.lat, lon: p.lon, label: p.label, id: p.id };
+            syncCoordInputs();
+            markActivePreset();
+            onCenterChanged();
+          });
+          presetRow.appendChild(b);
+        });
+      }
+
+      function markActivePreset() {
+        var btns = presetRow.querySelectorAll(".preset[data-id]");
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].classList.toggle("active", btns[i].dataset.id === state.center.id);
+        }
+      }
+
+      function syncCoordInputs() {
+        latInput.value = state.center.lat.toFixed(4);
+        lonInput.value = state.center.lon.toFixed(4);
+      }
+
+      function readCoordInputs() {
+        var la = parseFloat(latInput.value);
+        var lo = parseFloat(lonInput.value);
+        if (!isFinite(la) || !isFinite(lo)) return false;
+        if (la < -90 || la > 90 || lo < -180 || lo > 180) return false;
+        state.center = { lat: la, lon: lo, label: "Custom", id: "custom" };
+        markActivePreset();
+        return true;
+      }
+
+      function useGeolocation() {
+        if (!navigator.geolocation) {
+          setError("Geolocation isn't available in this browser.");
+          return;
+        }
+        setStatus("Getting location…");
+        navigator.geolocation.getCurrentPosition(
+          function (pos) {
+            state.center = {
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              label: "Your location",
+              id: "me"
+            };
+            syncCoordInputs();
+            markActivePreset();
+            onCenterChanged();
+          },
+          function (err) {
+            setError("Location denied or unavailable.");
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+        );
+      }
+
+      function onCenterChanged() {
+        state.selectedHex = null;
+        renderSelected();
+        fetchNow();
+      }
+
+      function setStatus(msg) {
+        statusText.textContent = msg;
+        liveDot.classList.remove("err");
+      }
+      function setError(msg) {
+        statusText.textContent = msg;
+        liveDot.classList.add("err");
+      }
+
+      function haversineNm(lat1, lon1, lat2, lon2) {
+        var R = 6371;
+        var toRad = Math.PI / 180;
+        var dLat = (lat2 - lat1) * toRad;
+        var dLon = (lon2 - lon1) * toRad;
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return (R * c) / NM_TO_KM;
+      }
+
+      function normalize(raw) {
+        var arr = (raw && (raw.ac || raw.aircraft)) || [];
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+          var a = arr[i];
+          if (!a) continue;
+          var lat = num(a.lat);
+          var lon = num(a.lon);
+          if (lat == null || lon == null) continue;
+          var call = (a.flight || a.r || a.hex || "").toString().trim();
+          var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
+          var isGround = altRaw === "ground" || a.ground === true;
+          var altFt = typeof altRaw === "number" ? altRaw : null;
+          out.push({
+            hex: (a.hex || "").toLowerCase(),
+            callsign: call || (a.hex || "——").toUpperCase(),
+            registration: a.r || "",
+            type: a.t || "",
+            lat: lat,
+            lon: lon,
+            altFt: altFt,
+            onGround: isGround,
+            gsKt: num(a.gs),
+            trackDeg: num(a.track),
+            squawk: a.squawk || "",
+            seen: num(a.seen)
+          });
+        }
+        return out;
+      }
+
+      function num(v) {
+        if (v == null) return null;
+        var n = typeof v === "number" ? v : parseFloat(v);
+        return isFinite(n) ? n : null;
+      }
+
+      function fetchNow() {
+        if (state.fetching) return;
+        state.fetching = true;
+        refreshBtn.disabled = true;
+        setStatus("Fetching…");
+
+        var lat = state.center.lat.toFixed(4);
+        var lon = state.center.lon.toFixed(4);
+        var dist = state.rangeNm;
+        radarLoc.textContent = (state.center.label || "Custom") + " · " + dist + " NM";
+        updateRangeLabels();
+
+        fetchWithFallback(lat, lon, dist, 0).then(function (data) {
+          state.planes = normalize(data);
+          state.planes.forEach(function (p) {
+            p.distNm = haversineNm(state.center.lat, state.center.lon, p.lat, p.lon);
+          });
+          state.planes.sort(function (a, b) { return (a.distNm || 0) - (b.distNm || 0); });
+          state.lastFetch = Date.now();
+          state.lastError = null;
+          renderAll();
+          setStatus(formatRelative(0) + " · live");
+          scheduleNext();
+        }).catch(function (err) {
+          state.lastError = err && err.message ? err.message : String(err);
+          setError("Couldn't load flights: " + state.lastError);
+          scheduleNext();
+        }).then(function () {
+          state.fetching = false;
+          refreshBtn.disabled = false;
+        });
+      }
+
+      function fetchWithFallback(lat, lon, dist, idx) {
+        if (idx >= API_HOSTS.length) {
+          return Promise.reject(new Error("all API hosts failed"));
+        }
+        var url = API_HOSTS[idx] + "/point/" + lat + "/" + lon + "/" + dist;
+        return fetchTimeout(url, 12000).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        }).catch(function (err) {
+          if (idx + 1 < API_HOSTS.length) return fetchWithFallback(lat, lon, dist, idx + 1);
+          throw err;
+        });
+      }
+
+      function fetchTimeout(url, ms) {
+        if (typeof AbortController === "undefined") {
+          return fetch(url, { cache: "no-store" });
+        }
+        var ctl = new AbortController();
+        var t = setTimeout(function () { ctl.abort(); }, ms);
+        return fetch(url, { cache: "no-store", signal: ctl.signal })
+          .then(function (r) { clearTimeout(t); return r; })
+          .catch(function (e) { clearTimeout(t); throw e; });
+      }
+
+      function scheduleNext() {
+        if (state.refreshTimer) clearTimeout(state.refreshTimer);
+        state.nextFetchAt = Date.now() + REFRESH_MS;
+        state.refreshTimer = setTimeout(fetchNow, REFRESH_MS);
+        startCountdown();
+      }
+
+      function startCountdown() {
+        if (state.countdownTimer) clearInterval(state.countdownTimer);
+        state.countdownTimer = setInterval(tickStatus, 1000);
+      }
+
+      function tickStatus() {
+        if (state.fetching) return;
+        if (state.lastError) return;
+        var ageMs = Date.now() - state.lastFetch;
+        var inMs = Math.max(0, state.nextFetchAt - Date.now());
+        statusText.textContent = formatRelative(ageMs) + " · next " + Math.ceil(inMs / 1000) + "s";
+      }
+
+      function formatRelative(ms) {
+        var s = Math.round(ms / 1000);
+        if (s < 2) return "just now";
+        if (s < 60) return s + "s ago";
+        var m = Math.round(s / 60);
+        return m + "m ago";
+      }
+
+      function updateRangeLabels() {
+        var r = state.rangeNm;
+        r1lbl.textContent = Math.round(r * 0.25);
+        r2lbl.textContent = Math.round(r * 0.5);
+        r3lbl.textContent = Math.round(r * 0.75) + " NM";
+      }
+
+      // Project lat/lon -> radar coords (viewBox is -100..100 for 0..rangeNm)
+      function project(p) {
+        var cLatRad = state.center.lat * Math.PI / 180;
+        var dLat = p.lat - state.center.lat;
+        var dLon = p.lon - state.center.lon;
+        var dyNm = dLat * 60;
+        var dxNm = dLon * 60 * Math.cos(cLatRad);
+        var scale = 100 / state.rangeNm;
+        return { x: dxNm * scale, y: -dyNm * scale };
+      }
+
+      function renderRadar() {
+        radarCount.textContent = state.planes.length;
+        planeLayer.innerHTML = "";
+        var svgns = "http://www.w3.org/2000/svg";
+
+        state.planes.forEach(function (p) {
+          var pt = project(p);
+          if (!isFinite(pt.x) || !isFinite(pt.y)) return;
+          var d2 = pt.x * pt.x + pt.y * pt.y;
+          if (d2 > 100 * 100 + 50) return; // off-radar cull (with small slack)
+
+          var g = document.createElementNS(svgns, "g");
+          var heading = p.trackDeg == null ? 0 : p.trackDeg;
+          g.setAttribute("transform", "translate(" + pt.x.toFixed(2) + "," + pt.y.toFixed(2) + ") rotate(" + heading.toFixed(1) + ")");
+          g.setAttribute("data-hex", p.hex);
+          g.style.cursor = "pointer";
+
+          var isSel = p.hex && p.hex === state.selectedHex;
+          var color = p.onGround ? "var(--plane-ground)" : (isSel ? "var(--plane-selected)" : "var(--plane)");
+
+          // tap hit area
+          var hit = document.createElementNS(svgns, "circle");
+          hit.setAttribute("cx", "0");
+          hit.setAttribute("cy", "0");
+          hit.setAttribute("r", "6");
+          hit.setAttribute("fill", "transparent");
+          g.appendChild(hit);
+
+          if (p.onGround) {
+            var c = document.createElementNS(svgns, "circle");
+            c.setAttribute("cx", "0");
+            c.setAttribute("cy", "0");
+            c.setAttribute("r", "2");
+            c.setAttribute("fill", color);
+            g.appendChild(c);
+          } else {
+            var path = document.createElementNS(svgns, "polygon");
+            path.setAttribute("points", "0,-4.2 3,4.2 0,2.6 -3,4.2");
+            path.setAttribute("fill", color);
+            if (isSel) {
+              path.setAttribute("stroke", "#fff");
+              path.setAttribute("stroke-width", "0.5");
+            }
+            g.appendChild(path);
+          }
+
+          if (isSel) {
+            var halo = document.createElementNS(svgns, "circle");
+            halo.setAttribute("cx", "0");
+            halo.setAttribute("cy", "0");
+            halo.setAttribute("r", "7.5");
+            halo.setAttribute("fill", "none");
+            halo.setAttribute("stroke", "var(--plane-selected)");
+            halo.setAttribute("stroke-width", "0.6");
+            halo.setAttribute("opacity", "0.6");
+            g.insertBefore(halo, g.firstChild);
+          }
+
+          g.addEventListener("click", function () { selectPlane(p.hex); });
+          planeLayer.appendChild(g);
+        });
+      }
+
+      function renderList() {
+        if (state.planes.length === 0) {
+          listContainer.innerHTML = '<div class="empty"><div class="e-emoji">🌤️</div>No aircraft in range right now.</div>';
+          return;
+        }
+        var html = '<div class="plane-list">';
+        state.planes.forEach(function (p) {
+          var alt = p.onGround ? "ground" : (p.altFt != null ? p.altFt.toLocaleString() + " ft" : "—");
+          var spd = p.gsKt != null ? Math.round(p.gsKt) + " kt" : "—";
+          var dist = p.distNm != null ? p.distNm.toFixed(1) + " NM" : "";
+          var sel = (p.hex && p.hex === state.selectedHex) ? " selected" : "";
+          html += '<div class="plane-row' + sel + '" data-hex="' + escapeHtml(p.hex) + '">' +
+            '<div class="pr-badge">✈</div>' +
+            '<div class="pr-body">' +
+              '<div class="pr-top">' +
+                '<span class="pr-call">' + escapeHtml(p.callsign) + '</span>' +
+                '<span class="pr-dist">' + escapeHtml(dist) + '</span>' +
+              '</div>' +
+              '<div class="pr-sub">' + escapeHtml(alt) + ' · ' + escapeHtml(spd) + (p.type ? ' · ' + escapeHtml(p.type) : '') + '</div>' +
+            '</div>' +
+          '</div>';
+        });
+        html += '</div>';
+        listContainer.innerHTML = html;
+        var rows = listContainer.querySelectorAll(".plane-row");
+        for (var i = 0; i < rows.length; i++) {
+          (function (el) {
+            el.addEventListener("click", function () { selectPlane(el.dataset.hex); });
+          })(rows[i]);
+        }
+      }
+
+      function renderSelected() {
+        if (!state.selectedHex) {
+          selectedCard.innerHTML = '<div class="sel-empty">Tap a plane to see details</div>';
+          return;
+        }
+        var p = null;
+        for (var i = 0; i < state.planes.length; i++) {
+          if (state.planes[i].hex === state.selectedHex) { p = state.planes[i]; break; }
+        }
+        if (!p) {
+          selectedCard.innerHTML = '<div class="sel-empty">Selected aircraft left the area</div>';
+          return;
+        }
+        var alt = p.onGround ? "Ground" : (p.altFt != null ? p.altFt.toLocaleString() + " ft" : "—");
+        var spd = p.gsKt != null ? Math.round(p.gsKt) + " kt" : "—";
+        var hdg = p.trackDeg != null ? Math.round(p.trackDeg) + "°" : "—";
+        var dist = p.distNm != null ? p.distNm.toFixed(1) + " NM" : "—";
+        var typ = p.type || "—";
+        var sq  = p.squawk || "—";
+        var reg = p.registration ? escapeHtml(p.registration) : "";
+        selectedCard.innerHTML =
+          '<div class="sel-head">' +
+            '<span class="sel-call">' + escapeHtml(p.callsign) + '</span>' +
+            '<span class="sel-reg">' + reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "") + '</span>' +
+          '</div>' +
+          '<div class="sel-grid">' +
+            '<div class="sel-cell"><span class="k">Altitude</span><span class="v">' + escapeHtml(alt) + '</span></div>' +
+            '<div class="sel-cell"><span class="k">Speed</span><span class="v">' + escapeHtml(spd) + '</span></div>' +
+            '<div class="sel-cell"><span class="k">Heading</span><span class="v">' + escapeHtml(hdg) + '</span></div>' +
+            '<div class="sel-cell"><span class="k">Distance</span><span class="v">' + escapeHtml(dist) + '</span></div>' +
+            '<div class="sel-cell"><span class="k">Squawk</span><span class="v">' + escapeHtml(sq) + '</span></div>' +
+            '<div class="sel-cell"><span class="k">Hex</span><span class="v">' + escapeHtml((p.hex || "").toUpperCase()) + '</span></div>' +
+          '</div>';
+      }
+
+      function selectPlane(hex) {
+        if (!hex) return;
+        state.selectedHex = (state.selectedHex === hex) ? null : hex;
+        renderRadar();
+        renderList();
+        renderSelected();
+      }
+
+      function renderAll() {
+        renderRadar();
+        renderList();
+        renderSelected();
+      }
+
+      // Event wiring
+      refreshBtn.addEventListener("click", fetchNow);
+
+      latInput.addEventListener("change", function () {
+        if (readCoordInputs()) onCenterChanged();
+      });
+      lonInput.addEventListener("change", function () {
+        if (readCoordInputs()) onCenterChanged();
+      });
+
+      rangeInput.addEventListener("input", function () {
+        rangeVal.textContent = rangeInput.value + " NM";
+        updateRangeLabels();
+      });
+      rangeInput.addEventListener("change", function () {
+        state.rangeNm = parseInt(rangeInput.value, 10) || 50;
+        rangeVal.textContent = state.rangeNm + " NM";
+        updateRangeLabels();
+        fetchNow();
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
+          if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
+        } else {
+          fetchNow();
+        }
+      });
+
+      // Init
+      buildPresets();
+      syncCoordInputs();
+      rangeVal.textContent = state.rangeNm + " NM";
+      rangeInput.value = state.rangeNm;
+      updateRangeLabels();
+      fetchNow();
+    })();
+  </script>
+</body>
+</html>

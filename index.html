@@ -38,6 +38,12 @@
     }
 
     header { padding-bottom: 4px; }
+    .header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
     .date {
       font-size: 12px;
       color: var(--muted);
@@ -51,6 +57,26 @@
       margin: 4px 0 20px;
       letter-spacing: -0.02em;
     }
+    .nav-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 0 14px;
+      margin-top: 2px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease, transform 140ms ease;
+      box-shadow: var(--shadow);
+    }
+    .nav-chip:active { background: var(--accent-soft); transform: scale(0.97); }
+    .nav-chip .ci { font-size: 15px; }
 
     .progress-card {
       background: var(--surface);
@@ -340,8 +366,16 @@
 <body>
   <div class="app">
     <header>
-      <div class="date" id="dateLabel"></div>
-      <h1>Habits</h1>
+      <div class="header-row">
+        <div>
+          <div class="date" id="dateLabel"></div>
+          <h1>Habits</h1>
+        </div>
+        <a class="nav-chip" href="tracker.html" aria-label="Open flight tracker">
+          <span class="ci" aria-hidden="true">✈</span>
+          <span>Flights</span>
+        </a>
+      </div>
       <div class="progress-card">
         <div class="progress-row">
           <span class="progress-label">Today's progress</span>
