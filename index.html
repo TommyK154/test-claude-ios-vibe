@@ -9,34 +9,45 @@
   <title>Flights</title>
   <style>
     :root {
-      --bg: #faf8f5;
-      --surface: #ffffff;
-      --text: #1f2937;
-      --muted: #6b7280;
-      --border: #ebe7df;
-      --accent: #4a7c6e;
-      --accent-soft: #dcebe4;
-      --shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
-      --radar-bg: #0f1b17;
-      --radar-ring: rgba(255, 255, 255, 0.08);
-      --radar-grid: rgba(255, 255, 255, 0.05);
-      --radar-label: rgba(255, 255, 255, 0.42);
-      --plane: #6ec49b;
-      --plane-selected: #f5c76a;
-      --plane-ground: #8b8b8b;
-      --danger: #b85c5c;
+      --bg: #0e1420;
+      --surface: #141c2b;
+      --surface-2: #1a2334;
+      --text: #d8e1ec;
+      --muted: #6b7c91;
+      --border: #1f2b40;
+      --border-2: #2a3b56;
+      --accent: #5ce0ca;
+      --accent-dim: #1f4d47;
+      --accent-soft: rgba(92, 224, 202, 0.08);
+      --shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+      --radar-bg: #070c15;
+      --radar-ring: rgba(92, 224, 202, 0.22);
+      --radar-grid: rgba(92, 224, 202, 0.08);
+      --radar-label: rgba(216, 225, 236, 0.55);
+      --plane: #5ce0ca;
+      --plane-selected: #f0c674;
+      --plane-ground: #6b7c91;
+      --danger: #e37d7d;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
     }
 
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      font-family: var(--sans);
       background: var(--bg);
       color: var(--text);
       -webkit-font-smoothing: antialiased;
       line-height: 1.45;
       min-height: 100vh;
+    }
+    .mono, input[inputmode="decimal"], .pr-call, .pr-dist, .pr-sub,
+    .sel-call, .sel-reg, .sel-cell .v, .range-val, #statusText,
+    .radar-overlay, .tactical-strip .readout {
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
     }
 
     .app {
@@ -45,29 +56,33 @@
       padding: calc(16px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom));
     }
 
-    .page-header { margin-bottom: 20px; }
-    .kicker {
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      font-weight: 600;
-    }
-    .main-title {
-      margin: 4px 0 0;
-      font-size: 30px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
+    .tactical-strip {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 4px;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
     }
-    .main-title .ico { font-size: 28px; }
+    .tactical-strip .brand { color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .tactical-strip .brand .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulseDot 1.8s infinite; }
+    .tactical-strip .readout { color: var(--muted); font-weight: 600; }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
 
     .controls {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 6px;
       padding: 14px;
       box-shadow: var(--shadow);
       margin-bottom: 14px;
@@ -79,6 +94,65 @@
       text-transform: uppercase;
       letter-spacing: 0.08em;
       font-weight: 600;
+    }
+    .airport-search {
+      position: relative;
+      margin-bottom: 10px;
+    }
+    #airportInput {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      -webkit-appearance: none;
+    }
+    #airportInput::placeholder { color: var(--muted); letter-spacing: 0; text-transform: none; }
+    #airportInput:focus { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+    .airport-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      margin-top: 4px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      max-height: 280px;
+      overflow-y: auto;
+      z-index: 30;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    }
+    .apt-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      min-height: 44px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .apt-item:last-child { border-bottom: none; }
+    .apt-item:active { background: var(--accent-soft); }
+    .apt-code {
+      font-family: var(--mono);
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 13px;
+      min-width: 44px;
+      letter-spacing: 0.06em;
+    }
+    .apt-name {
+      font-size: 13px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .preset-row {
       display: flex;
@@ -103,8 +177,15 @@
     .preset.active {
       background: var(--accent);
       border-color: var(--accent);
-      color: #fff;
+      color: #0a1018;
     }
+    .preset-geo {
+      color: var(--accent);
+      border-color: var(--accent-dim);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .preset-geo:hover { background: var(--accent-soft); }
     .preset:active { transform: scale(0.97); }
 
     .coord-row {
@@ -130,7 +211,7 @@
       padding: 10px 12px;
       font-size: 15px;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 4px;
       background: var(--bg);
       color: var(--text);
       font-family: inherit;
@@ -170,7 +251,7 @@
 
     .radar-card {
       background: var(--radar-bg);
-      border-radius: 18px;
+      border-radius: 8px;
       padding: 12px;
       margin-bottom: 14px;
       position: relative;
@@ -199,7 +280,7 @@
     .selected-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 6px;
       padding: 14px;
       box-shadow: var(--shadow);
       margin-bottom: 14px;
@@ -289,7 +370,7 @@
     .plane-row {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 6px;
       padding: 10px 12px;
       display: flex;
       align-items: center;
@@ -342,14 +423,16 @@
     .empty, .error {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 6px;
       padding: 22px 16px;
       text-align: center;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
     }
-    .error { border-color: rgba(184, 92, 92, 0.35); color: var(--danger); }
-    .empty .e-emoji { font-size: 28px; margin-bottom: 6px; }
+    .error { border-color: rgba(227, 125, 125, 0.35); color: var(--danger); text-transform: none; letter-spacing: 0; font-weight: 600; }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -361,13 +444,17 @@
 </head>
 <body>
   <div class="app">
-    <header class="page-header">
-      <div class="kicker">Live Radar</div>
-      <h1 class="main-title"><span class="ico" aria-hidden="true">✈</span><span>Flights</span></h1>
-    </header>
+    <div class="tactical-strip">
+      <span class="brand"><span class="dot" aria-hidden="true"></span>FLIGHT RADAR</span>
+      <span class="readout" id="tacReadout">— · 0 NM · 0</span>
+    </div>
 
     <div class="controls">
       <h2>Location</h2>
+      <div class="airport-search">
+        <input type="search" id="airportInput" placeholder="Airport code or city (e.g. SFO, KLAX, London)" autocomplete="off" spellcheck="false" autocapitalize="characters">
+        <div class="airport-dropdown" id="airportDropdown" hidden></div>
+      </div>
       <div class="preset-row" id="presetRow"></div>
       <div class="coord-row">
         <div class="coord">
@@ -445,6 +532,127 @@
         { id: "sin", label: "Singapore",     lat: 1.3644,  lon: 103.9915 }
       ];
 
+      var AIRPORTS = [
+        {iata:"SFO",icao:"KSFO",name:"San Francisco Intl",city:"San Francisco",lat:37.6188,lon:-122.3754},
+        {iata:"LAX",icao:"KLAX",name:"Los Angeles Intl",city:"Los Angeles",lat:33.9416,lon:-118.4085},
+        {iata:"JFK",icao:"KJFK",name:"John F Kennedy Intl",city:"New York",lat:40.6413,lon:-73.7781},
+        {iata:"LGA",icao:"KLGA",name:"LaGuardia",city:"New York",lat:40.7769,lon:-73.8740},
+        {iata:"EWR",icao:"KEWR",name:"Newark Liberty Intl",city:"New York",lat:40.6895,lon:-74.1745},
+        {iata:"ATL",icao:"KATL",name:"Hartsfield-Jackson",city:"Atlanta",lat:33.6407,lon:-84.4277},
+        {iata:"ORD",icao:"KORD",name:"O'Hare Intl",city:"Chicago",lat:41.9742,lon:-87.9073},
+        {iata:"MDW",icao:"KMDW",name:"Midway Intl",city:"Chicago",lat:41.7868,lon:-87.7522},
+        {iata:"DFW",icao:"KDFW",name:"Dallas/Fort Worth",city:"Dallas",lat:32.8998,lon:-97.0403},
+        {iata:"DEN",icao:"KDEN",name:"Denver Intl",city:"Denver",lat:39.8561,lon:-104.6737},
+        {iata:"SEA",icao:"KSEA",name:"Sea-Tac",city:"Seattle",lat:47.4502,lon:-122.3088},
+        {iata:"LAS",icao:"KLAS",name:"Harry Reid Intl",city:"Las Vegas",lat:36.0840,lon:-115.1537},
+        {iata:"MCO",icao:"KMCO",name:"Orlando Intl",city:"Orlando",lat:28.4312,lon:-81.3081},
+        {iata:"MIA",icao:"KMIA",name:"Miami Intl",city:"Miami",lat:25.7959,lon:-80.2871},
+        {iata:"FLL",icao:"KFLL",name:"Fort Lauderdale",city:"Fort Lauderdale",lat:26.0726,lon:-80.1527},
+        {iata:"BOS",icao:"KBOS",name:"Logan Intl",city:"Boston",lat:42.3656,lon:-71.0096},
+        {iata:"PHX",icao:"KPHX",name:"Sky Harbor",city:"Phoenix",lat:33.4342,lon:-112.0116},
+        {iata:"IAH",icao:"KIAH",name:"George Bush Intl",city:"Houston",lat:29.9902,lon:-95.3368},
+        {iata:"HOU",icao:"KHOU",name:"Hobby",city:"Houston",lat:29.6454,lon:-95.2789},
+        {iata:"MSP",icao:"KMSP",name:"Minneapolis-St Paul",city:"Minneapolis",lat:44.8848,lon:-93.2223},
+        {iata:"DTW",icao:"KDTW",name:"Detroit Metro",city:"Detroit",lat:42.2124,lon:-83.3534},
+        {iata:"PHL",icao:"KPHL",name:"Philadelphia Intl",city:"Philadelphia",lat:39.8744,lon:-75.2424},
+        {iata:"BWI",icao:"KBWI",name:"Baltimore/Washington",city:"Baltimore",lat:39.1754,lon:-76.6683},
+        {iata:"DCA",icao:"KDCA",name:"Reagan National",city:"Washington",lat:38.8512,lon:-77.0402},
+        {iata:"IAD",icao:"KIAD",name:"Dulles Intl",city:"Washington",lat:38.9531,lon:-77.4565},
+        {iata:"SLC",icao:"KSLC",name:"Salt Lake City",city:"Salt Lake City",lat:40.7899,lon:-111.9791},
+        {iata:"SAN",icao:"KSAN",name:"San Diego Intl",city:"San Diego",lat:32.7336,lon:-117.1897},
+        {iata:"PDX",icao:"KPDX",name:"Portland Intl",city:"Portland",lat:45.5898,lon:-122.5951},
+        {iata:"HNL",icao:"PHNL",name:"Daniel K Inouye",city:"Honolulu",lat:21.3245,lon:-157.9251},
+        {iata:"ANC",icao:"PANC",name:"Ted Stevens Anchorage",city:"Anchorage",lat:61.1744,lon:-149.9961},
+        {iata:"TPA",icao:"KTPA",name:"Tampa Intl",city:"Tampa",lat:27.9755,lon:-82.5332},
+        {iata:"STL",icao:"KSTL",name:"St Louis Lambert",city:"St Louis",lat:38.7487,lon:-90.3700},
+        {iata:"AUS",icao:"KAUS",name:"Austin-Bergstrom",city:"Austin",lat:30.1945,lon:-97.6699},
+        {iata:"BNA",icao:"KBNA",name:"Nashville Intl",city:"Nashville",lat:36.1245,lon:-86.6782},
+        {iata:"RDU",icao:"KRDU",name:"Raleigh-Durham",city:"Raleigh",lat:35.8776,lon:-78.7875},
+        {iata:"CLT",icao:"KCLT",name:"Charlotte Douglas",city:"Charlotte",lat:35.2140,lon:-80.9431},
+        {iata:"MCI",icao:"KMCI",name:"Kansas City Intl",city:"Kansas City",lat:39.2976,lon:-94.7139},
+        {iata:"IND",icao:"KIND",name:"Indianapolis Intl",city:"Indianapolis",lat:39.7173,lon:-86.2944},
+        {iata:"CLE",icao:"KCLE",name:"Cleveland Hopkins",city:"Cleveland",lat:41.4117,lon:-81.8498},
+        {iata:"PIT",icao:"KPIT",name:"Pittsburgh Intl",city:"Pittsburgh",lat:40.4915,lon:-80.2329},
+        {iata:"OAK",icao:"KOAK",name:"Oakland Intl",city:"Oakland",lat:37.7213,lon:-122.2208},
+        {iata:"SJC",icao:"KSJC",name:"Mineta San Jose",city:"San Jose",lat:37.3626,lon:-121.9290},
+        {iata:"SMF",icao:"KSMF",name:"Sacramento Intl",city:"Sacramento",lat:38.6954,lon:-121.5908},
+        {iata:"SNA",icao:"KSNA",name:"John Wayne",city:"Orange County",lat:33.6757,lon:-117.8682},
+        {iata:"LHR",icao:"EGLL",name:"Heathrow",city:"London",lat:51.4700,lon:-0.4543},
+        {iata:"LGW",icao:"EGKK",name:"Gatwick",city:"London",lat:51.1537,lon:-0.1821},
+        {iata:"STN",icao:"EGSS",name:"Stansted",city:"London",lat:51.8860,lon:0.2389},
+        {iata:"MAN",icao:"EGCC",name:"Manchester",city:"Manchester",lat:53.3537,lon:-2.2750},
+        {iata:"EDI",icao:"EGPH",name:"Edinburgh",city:"Edinburgh",lat:55.9500,lon:-3.3725},
+        {iata:"DUB",icao:"EIDW",name:"Dublin",city:"Dublin",lat:53.4213,lon:-6.2701},
+        {iata:"CDG",icao:"LFPG",name:"Charles de Gaulle",city:"Paris",lat:49.0097,lon:2.5479},
+        {iata:"ORY",icao:"LFPO",name:"Orly",city:"Paris",lat:48.7262,lon:2.3652},
+        {iata:"AMS",icao:"EHAM",name:"Schiphol",city:"Amsterdam",lat:52.3105,lon:4.7683},
+        {iata:"FRA",icao:"EDDF",name:"Frankfurt",city:"Frankfurt",lat:50.0379,lon:8.5622},
+        {iata:"MUC",icao:"EDDM",name:"Munich",city:"Munich",lat:48.3538,lon:11.7861},
+        {iata:"BER",icao:"EDDB",name:"Berlin Brandenburg",city:"Berlin",lat:52.3667,lon:13.5033},
+        {iata:"ZRH",icao:"LSZH",name:"Zurich",city:"Zurich",lat:47.4647,lon:8.5492},
+        {iata:"VIE",icao:"LOWW",name:"Vienna",city:"Vienna",lat:48.1103,lon:16.5697},
+        {iata:"MAD",icao:"LEMD",name:"Madrid-Barajas",city:"Madrid",lat:40.4936,lon:-3.5668},
+        {iata:"BCN",icao:"LEBL",name:"Barcelona-El Prat",city:"Barcelona",lat:41.2974,lon:2.0833},
+        {iata:"FCO",icao:"LIRF",name:"Rome-Fiumicino",city:"Rome",lat:41.8003,lon:12.2389},
+        {iata:"MXP",icao:"LIMC",name:"Milan Malpensa",city:"Milan",lat:45.6306,lon:8.7281},
+        {iata:"LIS",icao:"LPPT",name:"Lisbon",city:"Lisbon",lat:38.7742,lon:-9.1342},
+        {iata:"ATH",icao:"LGAV",name:"Athens",city:"Athens",lat:37.9364,lon:23.9445},
+        {iata:"IST",icao:"LTFM",name:"Istanbul",city:"Istanbul",lat:41.2753,lon:28.7519},
+        {iata:"SVO",icao:"UUEE",name:"Sheremetyevo",city:"Moscow",lat:55.9726,lon:37.4146},
+        {iata:"CPH",icao:"EKCH",name:"Copenhagen",city:"Copenhagen",lat:55.6180,lon:12.6561},
+        {iata:"OSL",icao:"ENGM",name:"Oslo",city:"Oslo",lat:60.1976,lon:11.1004},
+        {iata:"ARN",icao:"ESSA",name:"Stockholm Arlanda",city:"Stockholm",lat:59.6519,lon:17.9186},
+        {iata:"HEL",icao:"EFHK",name:"Helsinki",city:"Helsinki",lat:60.3172,lon:24.9633},
+        {iata:"BRU",icao:"EBBR",name:"Brussels",city:"Brussels",lat:50.9014,lon:4.4844},
+        {iata:"PRG",icao:"LKPR",name:"Václav Havel Prague",city:"Prague",lat:50.1008,lon:14.2600},
+        {iata:"WAW",icao:"EPWA",name:"Warsaw Chopin",city:"Warsaw",lat:52.1657,lon:20.9671},
+        {iata:"HND",icao:"RJTT",name:"Haneda",city:"Tokyo",lat:35.5523,lon:139.7798},
+        {iata:"NRT",icao:"RJAA",name:"Narita",city:"Tokyo",lat:35.7720,lon:140.3929},
+        {iata:"KIX",icao:"RJBB",name:"Kansai",city:"Osaka",lat:34.4347,lon:135.2441},
+        {iata:"ICN",icao:"RKSI",name:"Incheon",city:"Seoul",lat:37.4602,lon:126.4407},
+        {iata:"GMP",icao:"RKSS",name:"Gimpo",city:"Seoul",lat:37.5583,lon:126.7906},
+        {iata:"PEK",icao:"ZBAA",name:"Beijing Capital",city:"Beijing",lat:40.0801,lon:116.5846},
+        {iata:"PKX",icao:"ZBAD",name:"Beijing Daxing",city:"Beijing",lat:39.5098,lon:116.4105},
+        {iata:"PVG",icao:"ZSPD",name:"Shanghai Pudong",city:"Shanghai",lat:31.1443,lon:121.8083},
+        {iata:"SHA",icao:"ZSSS",name:"Shanghai Hongqiao",city:"Shanghai",lat:31.1979,lon:121.3363},
+        {iata:"CAN",icao:"ZGGG",name:"Guangzhou Baiyun",city:"Guangzhou",lat:23.3924,lon:113.2988},
+        {iata:"HKG",icao:"VHHH",name:"Hong Kong Intl",city:"Hong Kong",lat:22.3080,lon:113.9185},
+        {iata:"TPE",icao:"RCTP",name:"Taipei Taoyuan",city:"Taipei",lat:25.0797,lon:121.2342},
+        {iata:"SIN",icao:"WSSS",name:"Changi",city:"Singapore",lat:1.3644,lon:103.9915},
+        {iata:"KUL",icao:"WMKK",name:"Kuala Lumpur",city:"Kuala Lumpur",lat:2.7456,lon:101.7099},
+        {iata:"BKK",icao:"VTBS",name:"Suvarnabhumi",city:"Bangkok",lat:13.6900,lon:100.7501},
+        {iata:"DMK",icao:"VTBD",name:"Don Mueang",city:"Bangkok",lat:13.9126,lon:100.6068},
+        {iata:"MNL",icao:"RPLL",name:"Ninoy Aquino",city:"Manila",lat:14.5086,lon:121.0194},
+        {iata:"CGK",icao:"WIII",name:"Soekarno-Hatta",city:"Jakarta",lat:-6.1256,lon:106.6559},
+        {iata:"DEL",icao:"VIDP",name:"Indira Gandhi",city:"Delhi",lat:28.5562,lon:77.1000},
+        {iata:"BOM",icao:"VABB",name:"Chhatrapati Shivaji",city:"Mumbai",lat:19.0887,lon:72.8679},
+        {iata:"BLR",icao:"VOBL",name:"Kempegowda",city:"Bangalore",lat:13.1986,lon:77.7066},
+        {iata:"MAA",icao:"VOMM",name:"Chennai Intl",city:"Chennai",lat:12.9900,lon:80.1693},
+        {iata:"DXB",icao:"OMDB",name:"Dubai Intl",city:"Dubai",lat:25.2532,lon:55.3657},
+        {iata:"DWC",icao:"OMDW",name:"Dubai World Central",city:"Dubai",lat:24.8969,lon:55.1614},
+        {iata:"AUH",icao:"OMAA",name:"Abu Dhabi Intl",city:"Abu Dhabi",lat:24.4330,lon:54.6511},
+        {iata:"DOH",icao:"OTHH",name:"Hamad Intl",city:"Doha",lat:25.2731,lon:51.6081},
+        {iata:"TLV",icao:"LLBG",name:"Ben Gurion",city:"Tel Aviv",lat:32.0114,lon:34.8867},
+        {iata:"JNB",icao:"FAOR",name:"OR Tambo",city:"Johannesburg",lat:-26.1392,lon:28.2460},
+        {iata:"CPT",icao:"FACT",name:"Cape Town Intl",city:"Cape Town",lat:-33.9715,lon:18.6021},
+        {iata:"SYD",icao:"YSSY",name:"Kingsford Smith",city:"Sydney",lat:-33.9399,lon:151.1753},
+        {iata:"MEL",icao:"YMML",name:"Melbourne Intl",city:"Melbourne",lat:-37.6733,lon:144.8430},
+        {iata:"BNE",icao:"YBBN",name:"Brisbane Intl",city:"Brisbane",lat:-27.3842,lon:153.1175},
+        {iata:"PER",icao:"YPPH",name:"Perth Intl",city:"Perth",lat:-31.9403,lon:115.9672},
+        {iata:"AKL",icao:"NZAA",name:"Auckland Intl",city:"Auckland",lat:-37.0082,lon:174.7850},
+        {iata:"YYZ",icao:"CYYZ",name:"Toronto Pearson",city:"Toronto",lat:43.6777,lon:-79.6248},
+        {iata:"YVR",icao:"CYVR",name:"Vancouver Intl",city:"Vancouver",lat:49.1967,lon:-123.1815},
+        {iata:"YUL",icao:"CYUL",name:"Montréal-Trudeau",city:"Montreal",lat:45.4577,lon:-73.7497},
+        {iata:"MEX",icao:"MMMX",name:"Mexico City Intl",city:"Mexico City",lat:19.4361,lon:-99.0719},
+        {iata:"CUN",icao:"MMUN",name:"Cancún Intl",city:"Cancún",lat:21.0365,lon:-86.8770},
+        {iata:"GRU",icao:"SBGR",name:"Guarulhos",city:"São Paulo",lat:-23.4356,lon:-46.4731},
+        {iata:"GIG",icao:"SBGL",name:"Galeão",city:"Rio de Janeiro",lat:-22.8099,lon:-43.2505},
+        {iata:"EZE",icao:"SAEZ",name:"Ezeiza",city:"Buenos Aires",lat:-34.8222,lon:-58.5358},
+        {iata:"SCL",icao:"SCEL",name:"Santiago Intl",city:"Santiago",lat:-33.3930,lon:-70.7858},
+        {iata:"BOG",icao:"SKBO",name:"El Dorado",city:"Bogotá",lat:4.7016,lon:-74.1469},
+        {iata:"LIM",icao:"SPJC",name:"Jorge Chávez",city:"Lima",lat:-12.0219,lon:-77.1143}
+      ];
+
       var API_SOURCES = [
         {
           name: "adsb.fi",
@@ -517,8 +725,8 @@
         presetRow.innerHTML = "";
         var geoBtn = document.createElement("button");
         geoBtn.type = "button";
-        geoBtn.className = "preset";
-        geoBtn.textContent = "📍 My location";
+        geoBtn.className = "preset preset-geo";
+        geoBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/></svg>USE MY LOCATION';
         geoBtn.addEventListener("click", useGeolocation);
         presetRow.appendChild(geoBtn);
 
@@ -565,13 +773,14 @@
           setError("Geolocation isn't available in this browser.");
           return;
         }
-        setStatus("Getting location…");
+        try { localStorage.removeItem("geo.declined"); } catch (e) {}
+        setStatus("Acquiring GPS…");
         navigator.geolocation.getCurrentPosition(
           function (pos) {
             state.center = {
               lat: pos.coords.latitude,
               lon: pos.coords.longitude,
-              label: "Your location",
+              label: "Current",
               id: "me"
             };
             syncCoordInputs();
@@ -579,6 +788,9 @@
             onCenterChanged();
           },
           function (err) {
+            if (err && err.code === 1) {
+              try { localStorage.setItem("geo.declined", "true"); } catch (e) {}
+            }
             setError("Location denied or unavailable.");
           },
           { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
@@ -792,8 +1004,16 @@
         return { x: dxNm * scale, y: -dyNm * scale };
       }
 
+      function updateTacReadout() {
+        var tr = document.getElementById("tacReadout");
+        if (!tr) return;
+        var label = (state.center.label || "—").toString().toUpperCase();
+        tr.textContent = label + " · " + state.rangeNm + " NM · " + state.planes.length;
+      }
+
       function renderRadar() {
         radarCount.textContent = state.planes.length;
+        updateTacReadout();
         planeLayer.innerHTML = "";
         var svgns = "http://www.w3.org/2000/svg";
 
@@ -857,7 +1077,7 @@
 
       function renderList() {
         if (state.planes.length === 0) {
-          listContainer.innerHTML = '<div class="empty"><div class="e-emoji">🌤️</div>No aircraft in range right now.</div>';
+          listContainer.innerHTML = '<div class="empty">NO CONTACTS IN RANGE</div>';
           return;
         }
         var html = '<div class="plane-list">';
@@ -867,7 +1087,7 @@
           var dist = p.distNm != null ? p.distNm.toFixed(1) + " NM" : "";
           var sel = (p.hex && p.hex === state.selectedHex) ? " selected" : "";
           html += '<div class="plane-row' + sel + '" data-hex="' + escapeHtml(p.hex) + '">' +
-            '<div class="pr-badge">✈</div>' +
+            '<div class="pr-badge"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.2 9 7l5.4 2.2v1.4L9 9.4l-.3 3.3 1.8 1.3v1L8 14.5l-2.5.5v-1l1.8-1.3L7 9.4 1.6 10.6V9.2L7 7z"/></svg></div>' +
             '<div class="pr-body">' +
               '<div class="pr-top">' +
                 '<span class="pr-call">' + escapeHtml(p.callsign) + '</span>' +
@@ -966,13 +1186,114 @@
         }
       });
 
+      function setupAirportSearch() {
+        var input = document.getElementById("airportInput");
+        var dropdown = document.getElementById("airportDropdown");
+        if (!input || !dropdown) return;
+
+        function match(q) {
+          q = q.trim().toUpperCase();
+          if (!q) return [];
+          var exactIata = [], exactIcao = [], prefixCode = [], prefixText = [];
+          for (var i = 0; i < AIRPORTS.length; i++) {
+            var a = AIRPORTS[i];
+            if (a.iata === q) exactIata.push(a);
+            else if (a.icao === q) exactIcao.push(a);
+            else if (a.iata.indexOf(q) === 0 || a.icao.indexOf(q) === 0) prefixCode.push(a);
+            else if (a.city.toUpperCase().indexOf(q) !== -1 || a.name.toUpperCase().indexOf(q) !== -1) prefixText.push(a);
+            if (exactIata.length + exactIcao.length + prefixCode.length + prefixText.length > 40) break;
+          }
+          return exactIata.concat(exactIcao).concat(prefixCode).concat(prefixText).slice(0, 8);
+        }
+
+        function render(matches) {
+          if (!matches.length) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
+          dropdown.hidden = false;
+          var html = "";
+          for (var i = 0; i < matches.length; i++) {
+            var a = matches[i];
+            html += '<div class="apt-item" data-icao="' + escapeHtml(a.icao) + '">' +
+              '<span class="apt-code">' + escapeHtml(a.iata) + '</span>' +
+              '<span class="apt-name">' + escapeHtml(a.city) + ' · ' + escapeHtml(a.name) + '</span>' +
+              '</div>';
+          }
+          dropdown.innerHTML = html;
+          var items = dropdown.querySelectorAll(".apt-item");
+          for (var j = 0; j < items.length; j++) {
+            (function (el) {
+              el.addEventListener("click", function () {
+                var icao = el.dataset.icao;
+                var apt = null;
+                for (var k = 0; k < AIRPORTS.length; k++) {
+                  if (AIRPORTS[k].icao === icao) { apt = AIRPORTS[k]; break; }
+                }
+                if (!apt) return;
+                state.center = { lat: apt.lat, lon: apt.lon, label: apt.iata, id: apt.icao };
+                syncCoordInputs();
+                markActivePreset();
+                input.value = apt.iata + " · " + apt.city;
+                dropdown.hidden = true;
+                onCenterChanged();
+              });
+            })(items[j]);
+          }
+        }
+
+        input.addEventListener("input", function () { render(match(input.value)); });
+        input.addEventListener("focus", function () { if (input.value) render(match(input.value)); });
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            var m = match(input.value);
+            if (m.length) {
+              var first = dropdown.querySelector(".apt-item");
+              if (first) first.click();
+            }
+          } else if (e.key === "Escape") {
+            dropdown.hidden = true;
+            input.blur();
+          }
+        });
+        document.addEventListener("click", function (e) {
+          if (!input.contains(e.target) && !dropdown.contains(e.target)) dropdown.hidden = true;
+        });
+      }
+
+      function initGeo() {
+        var declined = false;
+        try { declined = localStorage.getItem("geo.declined") === "true"; } catch (e) {}
+        if (declined || !navigator.geolocation) { fetchNow(); return; }
+        setStatus("Acquiring GPS…");
+        navigator.geolocation.getCurrentPosition(
+          function (pos) {
+            state.center = {
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              label: "Current",
+              id: "me"
+            };
+            syncCoordInputs();
+            markActivePreset();
+            fetchNow();
+          },
+          function (err) {
+            if (err && err.code === 1) {
+              try { localStorage.setItem("geo.declined", "true"); } catch (e) {}
+            }
+            fetchNow();
+          },
+          { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
+        );
+      }
+
       // Init
       buildPresets();
+      setupAirportSearch();
       syncCoordInputs();
       rangeVal.textContent = state.rangeNm + " NM";
       rangeInput.value = state.rangeNm;
       updateRangeLabels();
-      fetchNow();
+      initGeo();
     })();
   </script>
 </body>
