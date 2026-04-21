@@ -774,35 +774,7 @@
       font-size: 14px;
       letter-spacing: 0.08em;
     }
-    .sel-route .sel-airport-icao {
-      color: #ff4ddb;
-      opacity: 0.55;
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      margin-left: 4px;
-    }
     .sel-route .sel-arrow { color: #ff4ddb; font-weight: 700; }
-    .sel-route .sel-airport-names {
-      flex-basis: 100%;
-      font-family: var(--sans);
-      font-size: 11px;
-      color: var(--muted);
-    }
-    .sel-route-warn {
-      flex-basis: 100%;
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      color: #ffbb80;
-      background: rgba(255, 158, 74, 0.12);
-      border: 1px solid #ff9e4a;
-      border-radius: 3px;
-      padding: 3px 8px;
-      margin-top: 4px;
-    }
     .sel-route-empty {
       color: var(--muted);
       font-size: 11px;
@@ -1671,36 +1643,6 @@
         return (R * c) / NM_TO_KM;
       }
 
-      // Initial great-circle bearing from (lat1, lon1) to (lat2, lon2) in degrees
-      // from true north, [0, 360). Used to cross-check a filed route's destination
-      // direction against the plane's current trackDeg — callsign reuse at
-      // adsbdb.com occasionally leaves a stale filed route attached to the hex.
-      function bearingDeg(lat1, lon1, lat2, lon2) {
-        var toRad = Math.PI / 180;
-        var phi1 = lat1 * toRad, phi2 = lat2 * toRad;
-        var dLon = (lon2 - lon1) * toRad;
-        var y = Math.sin(dLon) * Math.cos(phi2);
-        var x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
-        var brng = Math.atan2(y, x) / toRad;
-        return (brng + 360) % 360;
-      }
-
-      // Returns whether a filed route looks implausible given the plane's current
-      // heading — i.e. the bearing to the destination is >90° off from where the
-      // plane is actually pointed, AND the plane is >50 NM from the destination
-      // (so final-approach turns don't trigger false positives). Returns null if
-      // we don't have enough data to judge.
-      function routePlausibility(plane, route) {
-        if (!plane || !route || route.state !== "ok") return null;
-        if (!plane.lat || !plane.lon || plane.trackDeg == null) return null;
-        var d = route.destination;
-        if (!d || !isFinite(d.lat) || !isFinite(d.lon)) return null;
-        var distToDest = haversineNm(plane.lat, plane.lon, d.lat, d.lon);
-        if (distToDest < 50) return { ok: true, distToDest: distToDest };
-        var brg = bearingDeg(plane.lat, plane.lon, d.lat, d.lon);
-        var diff = Math.abs(((brg - plane.trackDeg + 540) % 360) - 180); // [0, 180]
-        return { ok: diff <= 90, distToDest: distToDest, bearingDiff: diff };
-      }
 
       function normalizeReadsb(raw) {
         var arr = (raw && (raw.ac || raw.aircraft)) || [];
@@ -1875,14 +1817,7 @@
         }
 
         var route = state.routes[(sel.callsign || "").toUpperCase()];
-        // Suppress pink route geometry if the filed route looks implausible
-        // relative to the plane's current heading (callsign-reuse artifact).
-        // Card still shows the text route with a UNCERTAIN tag — geometry on
-        // the radar gets suppressed because it'd mislead the user by drawing
-        // a triangle to a destination the plane isn't going to.
-        var routePlaus = routePlausibility(sel, route);
-        var routeConfident = !routePlaus || routePlaus.ok !== false;
-        if (routeConfident && route && route.state === "ok" && route.origin.lat && route.destination.lat) {
+        if (route && route.state === "ok" && route.origin.lat && route.destination.lat) {
           var cur = project({ lat: sel.lat, lon: sel.lon });
           var org = project({ lat: route.origin.lat, lon: route.origin.lon });
           var dst = project({ lat: route.destination.lat, lon: route.destination.lon });
@@ -2243,7 +2178,13 @@
       function project(p) {
         var cLatRad = state.center.lat * Math.PI / 180;
         var dLat = p.lat - state.center.lat;
+        // Normalize longitude delta across the antimeridian so routes that
+        // cross the Pacific take the short way. Without this, project() sees
+        // SFO (lon -122) → HND (lon +140) as a +262° eastward span and the
+        // pink route line draws as if the flight were crossing the Atlantic.
         var dLon = p.lon - state.center.lon;
+        if (dLon > 180) dLon -= 360;
+        else if (dLon < -180) dLon += 360;
         var dyNm = dLat * 60;
         var dxNm = dLon * 60 * Math.cos(cLatRad);
         var scale = 100 / state.rangeNm;
@@ -2924,34 +2865,12 @@
         // full-width block. Only render when we have a resolved origin+dest.
         var r = state.routes[callsign];
         if (!r || r.state !== "ok") return "";
-        var o = r.origin, d = r.destination;
-        // Show IATA prominently, but also render the ICAO in a de-emphasized
-        // segment when it differs. Makes the airport identity unambiguous for
-        // bug triage — if we displayed "SFO → TKF" we want to be certain which
-        // TKF. Helps distinguish a render-mapping bug from an upstream data bug.
-        function code(ap) {
-          var iata = ap.iata || "";
-          var icao = ap.icao || "";
-          if (iata && icao && iata !== icao) {
-            return '<span class="sel-airport">' + escapeHtml(iata) + '</span>' +
-                   '<span class="sel-airport-icao">' + escapeHtml(icao) + '</span>';
-          }
-          return '<span class="sel-airport">' + escapeHtml(iata || icao) + '</span>';
-        }
-        // Plausibility: if the plane's current heading contradicts the bearing
-        // to the destination by >90° AND the plane is >50 NM from destination,
-        // tag the route UNCERTAIN so the user knows it may be stale (adsbdb.com
-        // callsign reuse: NetJets etc. recycle callsigns across multiple legs).
-        var plaus = routePlausibility(state.selectedPlaneData, r);
-        var warnHtml = (plaus && plaus.ok === false)
-          ? '<span class="sel-route-warn">⚠ UNCERTAIN · heading doesn’t match destination</span>'
-          : '';
+        var oCode = escapeHtml(r.origin.iata || r.origin.icao || "");
+        var dCode = escapeHtml(r.destination.iata || r.destination.icao || "");
         return '<div class="sel-route">' +
-          code(o) +
+          '<span class="sel-airport">' + oCode + '</span>' +
           '<span class="sel-arrow">→</span>' +
-          code(d) +
-          '<span class="sel-airport-names">' + escapeHtml(o.name || "") + ' → ' + escapeHtml(d.name || "") + '</span>' +
-          warnHtml +
+          '<span class="sel-airport">' + dCode + '</span>' +
           '</div>';
       }
 
