@@ -146,6 +146,19 @@
     .ais-status { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-top: 4px; }
     .ais-status.ok { color: var(--accent); }
     .ais-status.err { color: var(--danger); }
+    .ais-diag {
+      margin-top: 6px;
+      padding: 6px 8px;
+      background: var(--surface-2);
+      border: 1px dashed var(--border);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .ais-diag-hint { margin-top: 6px !important; font-size: 11px; }
 
     .mode-toggle {
       display: grid;
@@ -511,6 +524,31 @@
       box-shadow: var(--shadow);
       margin-bottom: 14px;
       transition: padding 180ms ease;
+      position: relative;
+    }
+    .sel-close {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 4px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sel-close:hover, .sel-close:active {
+      color: var(--text);
+      background: var(--surface-2);
     }
     .selected-card.is-empty {
       padding: 8px 12px;
@@ -903,6 +941,8 @@
           <button type="button" id="aisKeyClear" class="btn-danger" hidden>CLEAR</button>
         </div>
         <div id="aisStatus" class="ais-status"></div>
+        <div id="aisDiag" class="ais-diag" hidden></div>
+        <p class="setting-help ais-diag-hint">If you see messages flowing but no ship markers, the subscribed bounding box may not match your map center — pan to a busy port (e.g. Rotterdam, Singapore, Houston) and wait ~30 s. aisstream's free tier only streams the bbox you subscribed to.</p>
       </div>
     </div>
     <div id="modeToggle" class="mode-toggle" hidden>
@@ -1244,11 +1284,17 @@
         routes: {},
         selectedHex: null,
         selectedMmsi: null,
-        selectedPlaneData: null, // sticky snapshot of selected plane so trail+route+icon persist even when bulk fetch bbox drops the aircraft
+        selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
+        lastSelectedPlane: null, // grace-period snapshot after deselect so the marker doesn't disappear
+        lastSelectedAt: 0,       // ms timestamp when lastSelectedPlane was set
         aircraftOwner: {}, // hex -> { operator, type, ... } from adsbdb.com, cached per selection
         aisMessageCount: 0,
         aisFirstMsgAt: 0,
         aisNoTrafficTimer: null,
+        aisMsgTypes: {},         // { PositionReport: N, ShipStaticData: M, error: K, ... }
+        aisLastMsgType: "",      // raw MessageType of the most recent frame
+        aisLoggedSamples: 0,     // count of console.log'd sample messages (cap at 3)
+        aisBbox: null,           // [[lat1,lon1],[lat2,lon2]] last-subscribed
         lastFetch: 0,
         lastError: null,
         fetching: false,
@@ -1319,6 +1365,12 @@
       var radarCount = $("radarCount");
       var planeLayer = $("planeLayer");
       var selectedCard = $("selectedCard");
+      if (selectedCard) {
+        selectedCard.addEventListener("click", function (e) {
+          var btn = e.target && e.target.closest && e.target.closest(".sel-close");
+          if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); }
+        });
+      }
       var liveDot = $("liveDot");
       var statusText = $("statusText");
       var refreshBtn = $("refreshBtn");
@@ -1737,6 +1789,19 @@
           });
           state.planes.sort(function (a, b) { return (a.distNm || 0) - (b.distNm || 0); });
           accumulateTracks();
+          // Keep the authoritative selected-plane snapshot fresh if the bulk
+          // fetch caught it. This prevents the icon flicker that happens when
+          // the plane transiently drops out of state.planes between fetches.
+          if (state.selectedHex) {
+            for (var spi = 0; spi < state.planes.length; spi++) {
+              if (state.planes[spi].hex === state.selectedHex) {
+                state.selectedPlaneData = Object.assign(
+                  {}, state.selectedPlaneData || {}, state.planes[spi]
+                );
+                break;
+              }
+            }
+          }
           state.lastFetch = Date.now();
           state.lastError = null;
           renderAll();
@@ -1945,16 +2010,26 @@
         planeLayer.innerHTML = "";
         var svgns = "http://www.w3.org/2000/svg";
 
-        // Sticky-selection shadow: if the selected plane is not in the current
-        // bulk fetch (drifted out of bbox), render it anyway from the
-        // selectedPlaneData snapshot so trail/route/trend stay anchored.
-        var planes = state.planes;
+        // Render source of truth, in priority order:
+        //   1. state.planes — bulk fetch snapshot for the current bbox
+        //   2. state.selectedPlaneData — authoritative render for the selected
+        //      plane. Replaces any duplicate in state.planes so the icon is
+        //      drawn from a single source that stays populated between fetches.
+        //   3. state.lastSelectedPlane — 30 s grace buffer after deselect so
+        //      the marker doesn't pop off the map the instant the user dismisses.
+        var planes = state.selectedHex
+          ? state.planes.filter(function (p) { return p.hex !== state.selectedHex; })
+          : state.planes.slice();
         if (state.selectedHex && state.selectedPlaneData) {
-          var inBulk = false;
-          for (var si = 0; si < planes.length; si++) {
-            if (planes[si].hex === state.selectedHex) { inBulk = true; break; }
+          planes.push(state.selectedPlaneData);
+        }
+        if (state.lastSelectedPlane && (Date.now() - state.lastSelectedAt) < 30000) {
+          var h = state.lastSelectedPlane.hex;
+          var dup = false;
+          for (var lsi = 0; lsi < planes.length; lsi++) {
+            if (planes[lsi].hex === h) { dup = true; break; }
           }
-          if (!inBulk) planes = planes.concat([state.selectedPlaneData]);
+          if (!dup) planes.push(state.lastSelectedPlane);
         }
 
         planes.forEach(function (p) {
@@ -2105,13 +2180,14 @@
         }
       }
 
+      var CLOSE_BUTTON_HTML = '<button class="sel-close" type="button" aria-label="Close">✕</button>';
       function renderSelected() {
         if (state.selectedMmsi) {
           selectedCard.classList.remove("is-empty");
           var s = state.ships[state.selectedMmsi];
           if (!s) {
             selectedCard.classList.add("is-empty");
-            selectedCard.innerHTML = '<div class="sel-empty">Selected vessel left the area</div>';
+            selectedCard.innerHTML = CLOSE_BUTTON_HTML + '<div class="sel-empty">Selected vessel left the area</div>';
             return;
           }
           var sog = s.sog != null ? s.sog.toFixed(1) + " kt" : "—";
@@ -2129,6 +2205,7 @@
             ? '<div class="sel-route sel-route-empty">NAV STATUS · ' + escapeHtml(navText) + '</div>'
             : '';
           selectedCard.innerHTML =
+            CLOSE_BUTTON_HTML +
             '<div class="sel-head">' +
               '<span class="sel-call">' + name + '</span>' +
               '<span class="sel-reg">MMSI ' + escapeHtml(s.mmsi) + (country ? ' · ' + escapeHtml(country) : '') + '</span>' +
@@ -2163,7 +2240,7 @@
           return;
         }
         selectedCard.classList.add("is-empty");
-        selectedCard.innerHTML = '<div class="sel-empty">Acquiring…</div>';
+        selectedCard.innerHTML = CLOSE_BUTTON_HTML + '<div class="sel-empty">Acquiring…</div>';
         return;
       }
 
@@ -2195,6 +2272,7 @@
         }
         var anomaliesHtml = renderAnomalyChips(p);
         selectedCard.innerHTML =
+          CLOSE_BUTTON_HTML +
           statusRowHtml +
           '<div class="sel-head">' +
             '<span class="sel-call">' + escapeHtml(callsign || hexUpper) + '</span>' +
@@ -2355,41 +2433,69 @@
 
       function selectPlane(hex) {
         if (!hex) return;
-        var wasSelected = state.selectedHex === hex;
+        if (state.selectedHex === hex) { deselectAll(); return; }
+        // Switching from another selection or fresh select.
         stopSelectedPoll();
-        if (wasSelected) {
-          // Deselecting — clear all sticky-selection state.
-          state.selectedHex = null;
-          state.selectedPlaneData = null;
-        } else {
-          state.selectedHex = hex;
-          // Snapshot the plane from the current bulk fetch (if present) so
-          // trail/route/icon stay drawn even after the plane leaves the bbox.
-          var sp = null;
-          for (var i = 0; i < state.planes.length; i++) {
-            if (state.planes[i].hex === state.selectedHex) { sp = state.planes[i]; break; }
-          }
-          state.selectedPlaneData = sp ? Object.assign({}, sp) : null;
-          fetchPlanePhoto(state.selectedHex);
-          if (sp && sp.callsign) fetchRoute(sp.callsign);
-          fetchAircraftOwner(state.selectedHex);
-          startSelectedPoll(state.selectedHex);
+        state.selectedHex = hex;
+        state.selectedMmsi = null;
+        state.lastSelectedPlane = null;
+        state.lastSelectedAt = 0;
+        // Snapshot the plane from the current bulk fetch (if present) so
+        // trail/route/icon stay drawn even after the plane leaves the bbox.
+        var sp = null;
+        for (var i = 0; i < state.planes.length; i++) {
+          if (state.planes[i].hex === state.selectedHex) { sp = state.planes[i]; break; }
         }
+        state.selectedPlaneData = sp ? Object.assign({}, sp) : null;
+        fetchPlanePhoto(state.selectedHex);
+        if (sp && sp.callsign) fetchRoute(sp.callsign);
+        fetchAircraftOwner(state.selectedHex);
+        startSelectedPoll(state.selectedHex);
         renderRadar();
         renderList();
         renderSelected();
         renderOverlays();
       }
 
-      // Returns the currently-selected plane data, preferring the live bulk
-      // fetch match but falling back to the sticky selectedPlaneData so a
-      // plane that drifts out of the bbox doesn't lose its overlays.
+      // Unified deselect. Used by:
+      //   (1) tap-same-plane-again (legacy toggle)
+      //   (2) the ✕ close button on the selected card
+      //   (3) tap on empty radar background (via maybeDeselectOnBackgroundTap)
+      //
+      // Deselection preserves the plane marker for up to 30 s (no trail/route/
+      // vector) via the `lastSelectedPlane` grace buffer, then immediately
+      // triggers a bulk fetch so the plane re-appears from `state.planes`
+      // naturally as soon as possible.
+      function deselectAll() {
+        if (state.selectedHex && state.selectedPlaneData) {
+          state.lastSelectedPlane = state.selectedPlaneData;
+          state.lastSelectedAt = Date.now();
+        }
+        state.selectedHex = null;
+        state.selectedMmsi = null;
+        state.selectedPlaneData = null;
+        stopSelectedPoll();
+        fetchNow();
+        renderRadar();
+        renderShips();
+        renderList();
+        renderSelected();
+        renderOverlays();
+      }
+
+      // Returns the currently-selected plane data. `selectedPlaneData` is the
+      // authoritative source for rendering the selected plane's icon/overlays
+      // (it's refreshed by every successful bulk fetch + every pollSelected
+      // fast-poll). This prevents the "icon disappears for a few seconds"
+      // flicker that happens when the selected plane is transiently absent
+      // from state.planes between fetches.
       function getSelectedPlane() {
         if (!state.selectedHex) return null;
+        if (state.selectedPlaneData) return state.selectedPlaneData;
         for (var i = 0; i < state.planes.length; i++) {
           if (state.planes[i].hex === state.selectedHex) return state.planes[i];
         }
-        return state.selectedPlaneData || null;
+        return null;
       }
 
       // Curated notable-callsign table. Instant match on every fetch so
@@ -2809,8 +2915,13 @@
         var svg = document.getElementById("radar");
         if (!svg) return;
 
-        // Explicit gesture state machine. The only legal transitions are
-        // in the transition functions below; all mutation goes through them.
+        // Gesture invariants (see CLAUDE.md → Gesture invariants):
+        // - `mode` is the single source of truth for what gesture is active.
+        // - Transition functions below are the only legal mutators.
+        // - Always snapshot a pointer's position BEFORE deleting from `pointers`,
+        //   because commitPan/commitPinch need that last position for math.
+        // - Every exit path from pan or pinch releases pointer captures.
+        // - `pointercancel` always resets to a clean idle state.
         var mode = "idle";       // "idle" | "pan" | "pinch"
         var pointers = {};       // pointerId -> { x, y }
         var panStart = null;     // snapshot when entering pan
@@ -2843,18 +2954,21 @@
           Object.keys(pointers).forEach(function (id) {
             try { svg.releasePointerCapture(parseInt(id, 10)); } catch (e) {}
           });
+          if (panStart && panStart.pointerId != null) {
+            try { svg.releasePointerCapture(panStart.pointerId); } catch (e) {}
+          }
         }
         function resetAll() {
+          releaseAllCaptures();
           mode = "idle";
           panStart = null;
           pinchStart = null;
-          releaseAllCaptures();
           clearTransform();
         }
 
         // --- transitions ---
 
-        function enterPan(pointerId, x, y) {
+        function enterPan(pointerId, x, y, downTarget) {
           var rect = svg.getBoundingClientRect();
           mode = "pan";
           pinchStart = null;
@@ -2865,7 +2979,12 @@
             startLat: state.center.lat,
             startLon: state.center.lon,
             vbPerPx: 220 / rect.width,
-            captured: false
+            captured: false,
+            // True if pointerdown landed on a plane/ship marker — means we
+            // should NOT treat a no-drag release as a background deselect.
+            // The plane/ship's own click handler runs after the pointer sequence.
+            downTargetInteractive: !!(downTarget &&
+              (downTarget.closest ? downTarget.closest("[data-hex], [data-mmsi]") : null))
           };
         }
 
@@ -2875,8 +2994,8 @@
           var d = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
           mode = "pinch";
           pinchStart = { initialDist: Math.max(10, d), initialRangeNm: state.rangeNm };
-          // Abandon any in-progress pan cleanly.
-          if (panStart && panStart.captured) {
+          // Abandon any in-progress pan cleanly, including its capture.
+          if (panStart && panStart.pointerId != null) {
             try { svg.releasePointerCapture(panStart.pointerId); } catch (e) {}
           }
           panStart = null;
@@ -2895,27 +3014,32 @@
           resubscribeAis();
         }
 
-        function commitPan() {
+        // `lastPt` = the last known {x, y} of the pan-owning pointer, captured
+        // BEFORE it was deleted from `pointers` in onPointerEnd. Without this,
+        // `pointers[panStart.pointerId]` reads undefined and dx/dy collapse to 0,
+        // which manifests as a "pan snaps back to origin on release" bug.
+        function commitPan(lastPt) {
           if (!panStart) { mode = "idle"; return; }
-          if (!panStart.captured) {
-            panStart = null;
-            mode = "idle";
-            return;
-          }
-          var p = pointers[panStart.pointerId] || { x: panStart.startX, y: panStart.startY };
-          var dx = p.x - panStart.startX;
-          var dy = p.y - panStart.startY;
-          var dxVB = dx * panStart.vbPerPx;
-          var dyVB = dy * panStart.vbPerPx;
-          var mPerVB = state.rangeNm * 1852 / 100;
-          var dLat = (dyVB * mPerVB) / 111320;
-          var dLon = -(dxVB * mPerVB) / (111320 * Math.max(0.01, Math.cos(panStart.startLat * Math.PI / 180)));
-          var newLat = Math.max(-85, Math.min(85, panStart.startLat + dLat));
-          var newLon = ((panStart.startLon + dLon + 540) % 360) - 180;
-          state.center = { lat: newLat, lon: newLon, label: "Custom", id: "custom" };
-          try { svg.releasePointerCapture(panStart.pointerId); } catch (e) {}
+          var ps = panStart;
+          try { svg.releasePointerCapture(ps.pointerId); } catch (e) {}
           panStart = null;
           mode = "idle";
+          if (!ps.captured) {
+            // Genuine tap, not a drag. Treat as a potential background-tap
+            // deselect if the tap wasn't on an interactive marker.
+            maybeDeselectOnBackgroundTap(ps);
+            return;
+          }
+          var dx = (lastPt ? lastPt.x : ps.startX) - ps.startX;
+          var dy = (lastPt ? lastPt.y : ps.startY) - ps.startY;
+          var dxVB = dx * ps.vbPerPx;
+          var dyVB = dy * ps.vbPerPx;
+          var mPerVB = state.rangeNm * 1852 / 100;
+          var dLat = (dyVB * mPerVB) / 111320;
+          var dLon = -(dxVB * mPerVB) / (111320 * Math.max(0.01, Math.cos(ps.startLat * Math.PI / 180)));
+          var newLat = Math.max(-85, Math.min(85, ps.startLat + dLat));
+          var newLon = ((ps.startLon + dLon + 540) % 360) - 180;
+          state.center = { lat: newLat, lon: newLon, label: "Custom", id: "custom" };
           syncCoordInputs();
           markActivePreset();
           clearTransform();
@@ -2928,14 +3052,23 @@
           resubscribeAis();
         }
 
+        function maybeDeselectOnBackgroundTap(ps) {
+          if (ps.downTargetInteractive) return; // plane/ship tap — let click handler fire
+          if (!state.selectedHex && !state.selectedMmsi) return;
+          deselectAll();
+        }
+
         // --- event handlers ---
 
         svg.addEventListener("pointerdown", function (e) {
           if (e.pointerType === "mouse" && e.button !== 0) return;
+          // Recover from any stuck state (dropped pointerup/pointercancel)
+          // before starting a new gesture.
+          if (pointerCount() === 0 && mode !== "idle") resetAll();
           pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
           var n = pointerCount();
           if (n === 1 && mode === "idle") {
-            enterPan(e.pointerId, e.clientX, e.clientY);
+            enterPan(e.pointerId, e.clientX, e.clientY, e.target);
           } else if (n >= 2 && mode !== "pinch") {
             enterPinch();
           }
@@ -2976,6 +3109,8 @@
 
         function onPointerEnd(e) {
           if (!(e.pointerId in pointers)) return;
+          // Snapshot last position BEFORE deleting — commitPan needs it.
+          var lastPt = { x: pointers[e.pointerId].x, y: pointers[e.pointerId].y };
           delete pointers[e.pointerId];
           var remaining = pointerCount();
 
@@ -2990,7 +3125,7 @@
               commitPinch();
               var id = Object.keys(pointers)[0];
               var pt = pointers[id];
-              enterPan(parseInt(id, 10), pt.x, pt.y);
+              enterPan(parseInt(id, 10), pt.x, pt.y, null);
             }
             // If remaining >= 2, a third finger lifted — stay in pinch.
             return;
@@ -2998,11 +3133,11 @@
 
           if (mode === "pan" && panStart && e.pointerId === panStart.pointerId) {
             if (remaining === 0) {
-              commitPan();
+              commitPan(lastPt);
             } else {
-              // The pan-owning pointer lifted but others remain. Cancel
-              // the pan without committing; let the next pointerdown/up
-              // sequence decide the next mode.
+              // The pan-owning pointer lifted but others remain. Release
+              // capture, cancel the pan; next pointerdown/up decides the mode.
+              try { svg.releasePointerCapture(panStart.pointerId); } catch (err) {}
               panStart = null;
               mode = "idle";
               clearTransform();
@@ -3014,7 +3149,7 @@
         svg.addEventListener("pointercancel", function (e) {
           // iOS occasionally delivers pointercancel instead of pointerup
           // when the system takes over the gesture (e.g. multi-app
-          // switcher). Reset everything to a clean idle state.
+          // switcher, safari gestures). Reset everything to a clean idle.
           delete pointers[e.pointerId];
           resetAll();
         });
@@ -3043,7 +3178,10 @@
           updateModeToggleVisibility();
           updateShipsHint();
         }
-        btn.addEventListener("click", function () { panel.hidden = !panel.hidden; });
+        btn.addEventListener("click", function () {
+          panel.hidden = !panel.hidden;
+          if (!panel.hidden) renderAisDiag();
+        });
         save.addEventListener("click", function () {
           var v = (input.value || "").trim();
           if (!v) return;
@@ -3106,12 +3244,43 @@
         el.className = "ais-status" + (cls ? " " + cls : "");
       }
 
+      // Populates the diagnostic block under the ais status line. Surfaces
+      // every scrap of evidence we have about the subscription so the user
+      // can tell a quiet bbox from a broken subscription from a parse bug.
+      function renderAisDiag() {
+        var el = document.getElementById("aisDiag");
+        if (!el) return;
+        if (!state.aisKey) { el.hidden = true; el.textContent = ""; return; }
+        var lines = [];
+        if (state.aisBbox) {
+          var sw = state.aisBbox[0], ne = state.aisBbox[1];
+          lines.push("bbox  SW " + sw[0].toFixed(2) + "," + sw[1].toFixed(2) +
+                     "  NE " + ne[0].toFixed(2) + "," + ne[1].toFixed(2));
+        }
+        lines.push("msgs  " + state.aisMessageCount +
+                   (state.aisFirstMsgAt
+                     ? " (first " + Math.round((Date.now() - state.aisFirstMsgAt) / 1000) + "s ago)"
+                     : ""));
+        var typeKeys = Object.keys(state.aisMsgTypes || {});
+        if (typeKeys.length) {
+          var parts = typeKeys.map(function (k) { return k + ":" + state.aisMsgTypes[k]; });
+          lines.push("types " + parts.join("  "));
+        }
+        if (state.aisLastMsgType) lines.push("last  " + state.aisLastMsgType);
+        var shipCount = Object.keys(state.ships || {}).length;
+        lines.push("ships " + shipCount + " known");
+        el.textContent = lines.join("\n");
+        el.hidden = false;
+      }
+
       function disconnectAisStream() {
         if (state.aisReconnectTimer) { clearTimeout(state.aisReconnectTimer); state.aisReconnectTimer = null; }
+        if (state.aisNoTrafficTimer) { clearTimeout(state.aisNoTrafficTimer); state.aisNoTrafficTimer = null; }
         if (state.aisSocket) {
           try { state.aisSocket.close(); } catch (e) {}
           state.aisSocket = null;
         }
+        renderAisDiag();
       }
 
       function connectAisStream() {
@@ -3124,19 +3293,25 @@
             state.aisReconnectAttempts = 0;
             state.aisMessageCount = 0;
             state.aisFirstMsgAt = 0;
+            state.aisMsgTypes = {};
+            state.aisLastMsgType = "";
+            state.aisLoggedSamples = 0;
             var bb = bboxForCenter();
+            state.aisBbox = bb;
             ws.send(JSON.stringify({
               APIKey: state.aisKey,
               BoundingBoxes: [[bb[0], bb[1]]],
               FilterMessageTypes: ["PositionReport", "ShipStaticData"]
             }));
             aisStatus("AIS CONNECTED · WAITING FOR TRAFFIC", "ok");
+            renderAisDiag();
             // If we don't see a single message in 30 s, downgrade the
             // status so the user knows it's quiet (vs. broken).
             if (state.aisNoTrafficTimer) clearTimeout(state.aisNoTrafficTimer);
             state.aisNoTrafficTimer = setTimeout(function () {
               if (state.aisMessageCount === 0) {
                 aisStatus("AIS CONNECTED · NO TRAFFIC IN AREA (try moving the map or lowering range)", "ok");
+                renderAisDiag();
               }
             }, 30000);
           });
@@ -3146,9 +3321,16 @@
               // Error frames from aisstream (malformed subscription, bad key,
               // unverified account, etc.) arrive as a type we need to surface.
               var mt = (msg && (msg.MessageType || msg.messageType || "")).toString();
+              state.aisLastMsgType = mt || "(unknown)";
+              state.aisMsgTypes[mt || "(unknown)"] = (state.aisMsgTypes[mt || "(unknown)"] || 0) + 1;
+              if (state.aisLoggedSamples < 3) {
+                state.aisLoggedSamples += 1;
+                try { console.log("[ais sample " + state.aisLoggedSamples + "]", msg); } catch (logErr) {}
+              }
               if (mt && mt.toLowerCase() === "error") {
                 var err = msg.Error || msg.error || msg.message || "unknown";
                 aisStatus("AIS: " + String(err).toUpperCase(), "err");
+                renderAisDiag();
                 return;
               }
               state.aisMessageCount += 1;
@@ -3156,8 +3338,10 @@
                 state.aisFirstMsgAt = Date.now();
                 if (state.aisNoTrafficTimer) { clearTimeout(state.aisNoTrafficTimer); state.aisNoTrafficTimer = null; }
                 aisStatus("AIS STREAMING · " + state.aisMessageCount + " MSG", "ok");
+                renderAisDiag();
               } else if (state.aisMessageCount % 10 === 0) {
                 aisStatus("AIS STREAMING · " + state.aisMessageCount + " MSG", "ok");
+                renderAisDiag();
               }
               var md = msg.MetaData || {};
               var mmsi = md.MMSI || md.MMSI_String;
@@ -3282,10 +3466,13 @@
 
       function selectShip(mmsi) {
         if (!mmsi) return;
-        state.selectedMmsi = (state.selectedMmsi === mmsi) ? null : mmsi;
+        if (state.selectedMmsi === mmsi) { deselectAll(); return; }
         if (state.selectedHex) stopSelectedPoll();
         state.selectedHex = null;
         state.selectedPlaneData = null;
+        state.lastSelectedPlane = null;
+        state.lastSelectedAt = 0;
+        state.selectedMmsi = mmsi;
         renderRadar(); renderShips(); renderList(); renderSelected(); renderOverlays();
       }
 
