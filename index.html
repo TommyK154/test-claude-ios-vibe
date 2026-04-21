@@ -387,29 +387,26 @@
       letter-spacing: 0.06em;
       font-weight: 600;
     }
-    .range-pills {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
+    .range-row label .muted { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0.02em; }
+    .range-slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-    .range-pill {
+    #rangeSlider {
+      flex: 1;
       min-height: 44px;
-      padding: 0;
-      border: 1px solid var(--border-2);
-      background: var(--bg);
-      color: var(--text);
+      accent-color: var(--accent);
+    }
+    .range-val {
+      flex: 0 0 auto;
+      min-width: 72px;
+      text-align: right;
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 13px;
-      letter-spacing: 0.08em;
-      border-radius: 4px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .range-pill.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #0a1018;
+      font-size: 14px;
+      color: var(--accent);
+      letter-spacing: 0.04em;
     }
 
     .radar-card {
@@ -515,6 +512,18 @@
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
+    .sel-alert {
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-align: center;
+    }
+    .sel-alert.emerg { background: rgba(255, 90, 90, 0.14); border: 1px solid #ff5a5a; color: #ff9a9a; }
+    .sel-alert.mil { background: rgba(255, 158, 74, 0.14); border: 1px solid #ff9e4a; color: #ffbb80; }
     .sel-route {
       display: flex;
       align-items: center;
@@ -771,12 +780,10 @@
         </div>
       </div>
       <div class="range-row">
-        <label>Range</label>
-        <div class="range-pills" id="rangePills">
-          <button type="button" class="range-pill" data-nm="25">25 NM</button>
-          <button type="button" class="range-pill active" data-nm="50">50 NM</button>
-          <button type="button" class="range-pill" data-nm="100">100 NM</button>
-          <button type="button" class="range-pill" data-nm="250">250 NM</button>
+        <label for="rangeSlider">Range <span class="muted">(pinch on the radar to zoom)</span></label>
+        <div class="range-slider-wrap">
+          <input id="rangeSlider" type="range" min="0" max="100" step="1" value="50" aria-label="Radar range">
+          <span class="range-val" id="rangeVal">50 NM</span>
         </div>
       </div>
     </div>
@@ -791,9 +798,18 @@
         <defs>
           <clipPath id="radarClip"><circle cx="0" cy="0" r="100"/></clipPath>
         </defs>
-        <g id="tileLayer" clip-path="url(#radarClip)"></g>
-        <g id="labelLayer" clip-path="url(#radarClip)"></g>
-        <circle cx="0" cy="0" r="100" fill="none" stroke="var(--accent-dim)" stroke-width="0.8" clip-path="url(#radarClip)" style="pointer-events:none"/>
+        <defs>
+          <radialGradient id="vignetteGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="45%" stop-color="#000" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#000" stop-opacity="0.2"/>
+            <stop offset="90%" stop-color="#070c15" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#070c15" stop-opacity="0.95"/>
+          </radialGradient>
+        </defs>
+        <g id="tileLayer"></g>
+        <g id="labelLayer"></g>
+        <rect x="-110" y="-110" width="220" height="220" fill="url(#vignetteGrad)" style="pointer-events:none"/>
+        <circle cx="0" cy="0" r="100" fill="none" stroke="var(--accent-dim)" stroke-width="0.8" style="pointer-events:none"/>
         <g id="radarGrid">
           <circle cx="0" cy="0" r="100" fill="none" stroke="var(--radar-ring)" stroke-width="0.8"/>
           <circle cx="0" cy="0" r="75" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
@@ -1061,12 +1077,55 @@
         aisReconnectAttempts: 0
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
+      state.military = {};  // hex -> true for military aircraft
+
+      function refreshMilitary() {
+        var urls = [
+          "https://opendata.adsb.fi/api/v2/mil",
+          "https://api.adsb.lol/v2/mil",
+          viaCorsProxy("https://opendata.adsb.fi/api/v2/mil")
+        ];
+        tryPhotoUrls(urls, 0).then(function (data) {
+          var arr = (data && (data.ac || data.aircraft)) || [];
+          var next = {};
+          for (var i = 0; i < arr.length; i++) {
+            var a = arr[i];
+            if (a && a.hex) next[a.hex.toLowerCase()] = true;
+          }
+          state.military = next;
+          renderRadar();
+        }).catch(function () {});
+      }
+
+      // MMSI country decode (Maritime Identification Digits — first 3 digits)
+      var MID_COUNTRY = {
+        201:"Albania",202:"Andorra",203:"Austria",204:"Azores",205:"Belgium",206:"Belarus",207:"Bulgaria",208:"Vatican",209:"Cyprus",210:"Cyprus",211:"Germany",212:"Cyprus",213:"Georgia",214:"Moldova",215:"Malta",216:"Armenia",218:"Germany",219:"Denmark",220:"Denmark",224:"Spain",225:"Spain",226:"France",227:"France",228:"France",229:"Malta",230:"Finland",231:"Faroe Islands",232:"UK",233:"UK",234:"UK",235:"UK",236:"Gibraltar",237:"Greece",238:"Croatia",239:"Greece",240:"Greece",241:"Greece",242:"Morocco",243:"Hungary",244:"Netherlands",245:"Netherlands",246:"Netherlands",247:"Italy",248:"Malta",249:"Malta",250:"Ireland",251:"Iceland",252:"Liechtenstein",253:"Luxembourg",254:"Monaco",255:"Madeira",256:"Malta",257:"Norway",258:"Norway",259:"Norway",261:"Poland",262:"Montenegro",263:"Portugal",264:"Romania",265:"Sweden",266:"Sweden",267:"Slovakia",268:"San Marino",269:"Switzerland",270:"Czech Republic",271:"Turkey",272:"Ukraine",273:"Russia",274:"North Macedonia",275:"Latvia",276:"Estonia",277:"Lithuania",278:"Slovenia",279:"Serbia",301:"Anguilla",303:"Alaska",304:"Antigua",305:"Antigua",306:"Curacao",307:"Aruba",308:"Bahamas",309:"Bahamas",310:"Bermuda",311:"Bahamas",312:"Belize",314:"Barbados",316:"Canada",319:"Cayman Islands",321:"Costa Rica",323:"Cuba",325:"Dominica",327:"Dominican Rep",329:"Guadeloupe",330:"Grenada",331:"Greenland",332:"Guatemala",334:"Honduras",336:"Haiti",338:"USA",339:"Jamaica",341:"St Kitts & Nevis",343:"St Lucia",345:"Mexico",347:"Martinique",348:"Montserrat",350:"Nicaragua",351:"Panama",352:"Panama",353:"Panama",354:"Panama",355:"Panama",356:"Panama",357:"Panama",358:"Puerto Rico",359:"El Salvador",361:"St Pierre",362:"Trinidad",364:"Turks & Caicos",366:"USA",367:"USA",368:"USA",369:"USA",370:"Panama",371:"Panama",372:"Panama",373:"Panama",374:"Panama",375:"St Vincent",376:"St Vincent",377:"St Vincent",378:"British Virgin Is",379:"US Virgin Is",401:"Afghanistan",403:"Saudi Arabia",405:"Bangladesh",408:"Bahrain",410:"Bhutan",412:"China",413:"China",414:"China",416:"Taiwan",417:"Sri Lanka",419:"India",422:"Iran",423:"Azerbaijan",425:"Iraq",428:"Israel",431:"Japan",432:"Japan",434:"Turkmenistan",436:"Kazakhstan",437:"Uzbekistan",438:"Jordan",440:"Korea",441:"Korea",443:"Palestine",445:"North Korea",447:"Kuwait",450:"Lebanon",451:"Kyrgyzstan",453:"Macao",455:"Maldives",457:"Mongolia",459:"Nepal",461:"Oman",463:"Pakistan",466:"Qatar",468:"Syria",470:"UAE",471:"UAE",472:"Tajikistan",473:"Yemen",475:"Yemen",477:"Hong Kong",478:"Bosnia",501:"Adelie Land",503:"Australia",506:"Myanmar",508:"Brunei",510:"Micronesia",511:"Palau",512:"New Zealand",514:"Cambodia",515:"Cambodia",516:"Christmas Is",518:"Cook Islands",520:"Fiji",523:"Cocos Is",525:"Indonesia",529:"Kiribati",531:"Laos",533:"Malaysia",536:"Mariana Is",538:"Marshall Is",540:"New Caledonia",542:"Niue",544:"Nauru",546:"French Polynesia",548:"Philippines",553:"Papua New Guinea",555:"Pitcairn Is",557:"Solomon Is",559:"American Samoa",561:"Samoa",563:"Singapore",564:"Singapore",565:"Singapore",566:"Singapore",567:"Thailand",570:"Tonga",572:"Tuvalu",574:"Vietnam",576:"Vanuatu",577:"Vanuatu",578:"Wallis & Futuna",601:"South Africa",603:"Angola",605:"Algeria",607:"St Paul",608:"Ascension",609:"Burundi",610:"Benin",611:"Botswana",612:"C African Rep",613:"Cameroon",615:"Congo",616:"Comoros",617:"Cape Verde",618:"Antarctica",619:"Ivory Coast",620:"Comoros",621:"Djibouti",622:"Egypt",624:"Ethiopia",625:"Eritrea",626:"Gabon",627:"Ghana",629:"Gambia",630:"Guinea-Bissau",631:"Equatorial Guinea",632:"Guinea",633:"Burkina Faso",634:"Kenya",635:"Antarctica",636:"Liberia",637:"Liberia",638:"South Sudan",642:"Libya",644:"Lesotho",645:"Mauritius",647:"Madagascar",649:"Mali",650:"Mozambique",654:"Mauritania",655:"Malawi",656:"Niger",657:"Nigeria",659:"Namibia",660:"Reunion",661:"Rwanda",662:"Sudan",663:"Senegal",664:"Seychelles",665:"St Helena",666:"Somalia",667:"Sierra Leone",668:"Sao Tome",669:"Swaziland",670:"Chad",671:"Togo",672:"Tunisia",674:"Tanzania",675:"Uganda",676:"DR Congo",677:"Tanzania",678:"Zambia",679:"Zimbabwe",701:"Argentina",710:"Brazil",720:"Bolivia",725:"Chile",730:"Colombia",735:"Ecuador",740:"UK (Falkland)",745:"Guiana",750:"Guyana",755:"Paraguay",760:"Peru",765:"Suriname",770:"Uruguay",775:"Venezuela"
+      };
+      function mmsiCountry(mmsi) {
+        if (!mmsi) return "";
+        var s = String(mmsi);
+        if (s.length < 3) return "";
+        return MID_COUNTRY[parseInt(s.substring(0, 3), 10)] || "";
+      }
 
       var $ = function (id) { return document.getElementById(id); };
 
       var presetRow = $("presetRow");
       var latInput = $("latInput");
       var lonInput = $("lonInput");
+      // Slider 0–100 maps logarithmically to 5–500 NM.
+      var RANGE_MIN = 5;
+      var RANGE_MAX = 500;
+      function sliderToNm(v) {
+        var t = v / 100;
+        var nm = Math.exp(Math.log(RANGE_MIN) + t * (Math.log(RANGE_MAX) - Math.log(RANGE_MIN)));
+        return Math.max(RANGE_MIN, Math.min(RANGE_MAX, Math.round(nm)));
+      }
+      function nmToSlider(nm) {
+        nm = Math.max(RANGE_MIN, Math.min(RANGE_MAX, nm));
+        var t = (Math.log(nm) - Math.log(RANGE_MIN)) / (Math.log(RANGE_MAX) - Math.log(RANGE_MIN));
+        return t * 100;
+      }
       var rangeInput = null;
       var rangeVal = null;
       var radarLoc = $("radarLoc");
@@ -1540,7 +1599,9 @@
         var scale = mPerPx * radarUnitPerMeter;
         var tileSize = 256 * scale;
 
-        var halfGrid = Math.min(4, Math.ceil((100 + tileSize / 2) / tileSize));
+        // Pre-load a buffer of tiles beyond the radar circle so short pans
+        // don't hit the edge. 140 instead of 100 means ~40% buffer.
+        var halfGrid = Math.min(6, Math.ceil((140 + tileSize / 2) / tileSize));
         var svgns = "http://www.w3.org/2000/svg";
         var xlinkns = "http://www.w3.org/1999/xlink";
         var IMAGERY = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
@@ -1570,10 +1631,10 @@
             var offY = (ty - centerTileY) * 256;
             var rx = offX * scale;
             var ry = offY * scale;
-            var cx = rx + tileSize / 2;
-            var cy = ry + tileSize / 2;
-            var dist = Math.sqrt(cx * cx + cy * cy);
-            if (dist - tileSize > 100) continue;
+            // Cull only tiles that are fully outside the SVG viewBox (-110..110)
+            // instead of the radar circle — we now render the full square with
+            // a vignette masking the corners.
+            if (rx + tileSize < -110 || rx > 110 || ry + tileSize < -110 || ry > 110) continue;
 
             var suffix = z + "/" + ty + "/" + wrappedTx;
             placeTile(tileLayer, IMAGERY + suffix, rx, ry, tileSize);
@@ -1635,7 +1696,14 @@
           g.style.cursor = "pointer";
 
           var isSel = p.hex && p.hex === state.selectedHex;
-          var color = p.onGround ? "var(--plane-ground)" : (isSel ? "var(--plane-selected)" : "var(--plane)");
+          var isMil = state.military && state.military[p.hex] ? true : false;
+          var sq = (p.squawk || "").toString();
+          var isEmergency = (sq === "7500" || sq === "7600" || sq === "7700");
+          var color = isEmergency ? "#ff5a5a"
+            : p.onGround ? "var(--plane-ground)"
+            : isSel ? "var(--plane-selected)"
+            : isMil ? "#ff9e4a"
+            : "var(--plane)";
 
           // tap hit area
           var hit = document.createElementNS(svgns, "circle");
@@ -1664,6 +1732,26 @@
             g.appendChild(path);
           }
 
+          if (isEmergency) {
+            var ehalo = document.createElementNS(svgns, "circle");
+            ehalo.setAttribute("cx", "0"); ehalo.setAttribute("cy", "0");
+            ehalo.setAttribute("r", "6");
+            ehalo.setAttribute("fill", "none");
+            ehalo.setAttribute("stroke", "#ff5a5a");
+            ehalo.setAttribute("stroke-width", "0.8");
+            var anim1 = document.createElementNS(svgns, "animate");
+            anim1.setAttribute("attributeName", "r");
+            anim1.setAttribute("values", "5;10;5");
+            anim1.setAttribute("dur", "1.6s");
+            anim1.setAttribute("repeatCount", "indefinite");
+            var anim2 = document.createElementNS(svgns, "animate");
+            anim2.setAttribute("attributeName", "opacity");
+            anim2.setAttribute("values", "1;0.15;1");
+            anim2.setAttribute("dur", "1.6s");
+            anim2.setAttribute("repeatCount", "indefinite");
+            ehalo.appendChild(anim1); ehalo.appendChild(anim2);
+            g.insertBefore(ehalo, g.firstChild);
+          }
           if (isSel) {
             var halo = document.createElementNS(svgns, "circle");
             halo.setAttribute("cx", "0");
@@ -1756,10 +1844,11 @@
           var hdg = s.heading != null ? s.heading + "°" : "—";
           var dist = s.distNm != null ? s.distNm.toFixed(1) + " NM" : "—";
           var name = escapeHtml((s.name || "").toString().toUpperCase() || ("MMSI " + s.mmsi));
+          var country = mmsiCountry(s.mmsi);
           selectedCard.innerHTML =
             '<div class="sel-head">' +
               '<span class="sel-call">' + name + '</span>' +
-              '<span class="sel-reg">MMSI ' + escapeHtml(s.mmsi) + '</span>' +
+              '<span class="sel-reg">MMSI ' + escapeHtml(s.mmsi) + (country ? ' · ' + escapeHtml(country) : '') + '</span>' +
             '</div>' +
             (s.destination ? '<div class="sel-route sel-route-empty">DEST · ' + escapeHtml(s.destination) + '</div>' : '') +
             '<div class="sel-grid">' +
@@ -1797,11 +1886,17 @@
         var reg = p.registration ? escapeHtml(p.registration) : "";
         var photoHtml = renderPhotoBlock(p.hex);
         var routeHtml = renderRouteBlock((p.callsign || "").toUpperCase());
+        var sq2 = (p.squawk || "").toString();
+        var emLabel = sq2 === "7500" ? "HIJACK" : sq2 === "7600" ? "RADIO FAIL" : sq2 === "7700" ? "EMERGENCY" : "";
+        var alertsHtml = "";
+        if (emLabel) alertsHtml += '<div class="sel-alert emerg">⚠ ' + emLabel + ' · SQUAWK ' + sq2 + '</div>';
+        if (state.military && state.military[(p.hex || "").toLowerCase()]) alertsHtml += '<div class="sel-alert mil">MIL · TRACKED AS MILITARY</div>';
         selectedCard.innerHTML =
           '<div class="sel-head">' +
             '<span class="sel-call">' + escapeHtml(p.callsign) + '</span>' +
             '<span class="sel-reg">' + reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "") + '</span>' +
           '</div>' +
+          alertsHtml +
           routeHtml +
           photoHtml +
           '<div class="sel-grid">' +
@@ -1889,16 +1984,69 @@
       function selectPlane(hex) {
         if (!hex) return;
         state.selectedHex = (state.selectedHex === hex) ? null : hex;
+        stopSelectedPoll();
         if (state.selectedHex) {
           fetchPlanePhoto(state.selectedHex);
           var sp = null;
           for (var i = 0; i < state.planes.length; i++) if (state.planes[i].hex === state.selectedHex) { sp = state.planes[i]; break; }
           if (sp && sp.callsign) fetchRoute(sp.callsign);
+          startSelectedPoll(state.selectedHex);
         }
         renderRadar();
         renderList();
         renderSelected();
         renderOverlays();
+      }
+
+      function startSelectedPoll(hex) {
+        stopSelectedPoll();
+        if (!hex) return;
+        state.selectedPollTimer = setInterval(function () { pollSelected(hex); }, 5000);
+        pollSelected(hex); // kick off immediately
+      }
+      function stopSelectedPoll() {
+        if (state.selectedPollTimer) {
+          clearInterval(state.selectedPollTimer);
+          state.selectedPollTimer = null;
+        }
+      }
+      function pollSelected(hex) {
+        if (state.selectedHex !== hex) { stopSelectedPoll(); return; }
+        var base = "https://opendata.adsb.fi/api/v2/hex/" + hex;
+        var alt = "https://api.adsb.lol/v2/hex/" + hex;
+        var urls = [base, alt, viaCorsProxy(base), viaCorsProxy(alt)];
+        tryPhotoUrls(urls, 0).then(function (data) {
+          var arr = (data && (data.ac || data.aircraft)) || [];
+          if (!arr.length) return;
+          var a = arr[0];
+          var lat = (typeof a.lat === "number") ? a.lat : null;
+          var lon = (typeof a.lon === "number") ? a.lon : null;
+          if (lat == null || lon == null) return;
+          // update in planes array if present
+          var found = null;
+          for (var i = 0; i < state.planes.length; i++) {
+            if (state.planes[i].hex === hex.toLowerCase()) { found = state.planes[i]; break; }
+          }
+          if (found) {
+            found.lat = lat;
+            found.lon = lon;
+            var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
+            found.altFt = typeof altRaw === "number" ? altRaw : found.altFt;
+            if (typeof a.gs === "number") found.gsKt = a.gs;
+            if (typeof a.track === "number") found.trackDeg = a.track;
+            found.onGround = altRaw === "ground" || a.ground === true;
+            found.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
+          }
+          // append to track history
+          var t = state.tracks[hex.toLowerCase()] || (state.tracks[hex.toLowerCase()] = []);
+          var last = t.length ? t[t.length - 1] : null;
+          if (!last || Math.abs(last.lat - lat) > 0.0001 || Math.abs(last.lon - lon) > 0.0001) {
+            t.push({ lat: lat, lon: lon, t: Date.now() });
+            if (t.length > 300) t.shift();
+          }
+          renderRadar();
+          renderOverlays();
+        }).catch(function () { /* ignore — retry on next tick */ });
       }
 
       function renderAll() {
@@ -1918,23 +2066,33 @@
         if (readCoordInputs()) onCenterChanged();
       });
 
-      var rangePills = document.getElementById("rangePills");
-      if (rangePills) {
-        var pills = rangePills.querySelectorAll(".range-pill");
-        for (var i = 0; i < pills.length; i++) {
-          (function (pill) {
-            pill.addEventListener("click", function () {
-              var nm = parseInt(pill.dataset.nm, 10) || 50;
-              state.rangeNm = nm;
-              for (var j = 0; j < pills.length; j++) pills[j].classList.toggle("active", pills[j] === pill);
-              updateRangeLabels();
-              renderTiles();
-              fetchNow();
-              resubscribeAis();
-              renderShips();
-            });
-          })(pills[i]);
-        }
+      var rangeSlider = document.getElementById("rangeSlider");
+      var rangeValEl = document.getElementById("rangeVal");
+      function applyRange(nm, options) {
+        options = options || {};
+        nm = Math.max(RANGE_MIN, Math.min(RANGE_MAX, Math.round(nm)));
+        if (nm === state.rangeNm && !options.force) return;
+        state.rangeNm = nm;
+        if (rangeValEl) rangeValEl.textContent = nm + " NM";
+        if (rangeSlider) rangeSlider.value = nmToSlider(nm).toFixed(1);
+        updateRangeLabels();
+        if (!options.skipRender) renderTiles();
+        if (!options.skipFetch) { fetchNow(); resubscribeAis(); renderShips(); }
+      }
+      if (rangeSlider) {
+        if (rangeValEl) rangeValEl.textContent = state.rangeNm + " NM";
+        rangeSlider.value = nmToSlider(state.rangeNm).toFixed(1);
+        var rangeChangeTimer = null;
+        rangeSlider.addEventListener("input", function () {
+          var nm = sliderToNm(parseFloat(rangeSlider.value));
+          state.rangeNm = nm;
+          if (rangeValEl) rangeValEl.textContent = nm + " NM";
+          updateRangeLabels();
+          if (rangeChangeTimer) clearTimeout(rangeChangeTimer);
+          rangeChangeTimer = setTimeout(function () {
+            renderTiles(); fetchNow(); resubscribeAis(); renderShips();
+          }, 180);
+        });
       }
 
       document.addEventListener("visibilitychange", function () {
@@ -2085,8 +2243,16 @@
             document.getElementById("vectorLayer")
           ].filter(function (x) { return x; });
         };
-        var drag = null;
+        var pointers = {};
+        var pan = null;
+        var pinch = null;
+        var refreshTileTimer = null;
 
+        function pointersArr() {
+          var out = [];
+          for (var k in pointers) out.push(pointers[k]);
+          return out;
+        }
         function applyTransform(dxVB, dyVB) {
           var t = "translate(" + dxVB.toFixed(2) + " " + dyVB.toFixed(2) + ")";
           var ls = layers();
@@ -2096,11 +2262,20 @@
           var ls = layers();
           for (var i = 0; i < ls.length; i++) ls[i].removeAttribute("transform");
         }
+        function throttledTileRefresh(lat, lon) {
+          if (refreshTileTimer) return;
+          refreshTileTimer = setTimeout(function () {
+            refreshTileTimer = null;
+            var saveLat = state.center.lat, saveLon = state.center.lon;
+            state.center.lat = lat; state.center.lon = lon;
+            renderTiles();
+            state.center.lat = saveLat; state.center.lon = saveLon;
+          }, 200);
+        }
 
-        svg.addEventListener("pointerdown", function (e) {
-          if (e.pointerType === "mouse" && e.button !== 0) return;
+        function startPan(e) {
           var rect = svg.getBoundingClientRect();
-          drag = {
+          pan = {
             pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
@@ -2109,55 +2284,116 @@
             vbPerPx: 220 / rect.width,
             captured: false
           };
+        }
+        function startPinch() {
+          var ps = pointersArr();
+          if (ps.length < 2) return;
+          var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+          pinch = { initialDist: Math.max(10, d), initialRangeNm: state.rangeNm };
+          clearTransform();
+          pan = null;
+          if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
+        }
+
+        svg.addEventListener("pointerdown", function (e) {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+          var n = pointersArr().length;
+          if (n === 1) startPan(e);
+          else if (n === 2) startPinch();
         });
 
         svg.addEventListener("pointermove", function (e) {
-          if (!drag || e.pointerId !== drag.pointerId) return;
-          var dx = e.clientX - drag.startX;
-          var dy = e.clientY - drag.startY;
-          if (!drag.captured) {
-            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-            drag.captured = true;
-            try { svg.setPointerCapture(e.pointerId); } catch (err) {}
-            if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
-            if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
+          if (!(e.pointerId in pointers)) return;
+          pointers[e.pointerId].x = e.clientX;
+          pointers[e.pointerId].y = e.clientY;
+
+          if (pinch) {
+            var ps = pointersArr();
+            if (ps.length < 2) return;
+            var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+            if (d < 10) return;
+            var ratio = pinch.initialDist / d;
+            var newNm = pinch.initialRangeNm * ratio;
+            applyRange(newNm, { skipFetch: true });
+            e.preventDefault();
+            return;
           }
-          applyTransform(dx * drag.vbPerPx, dy * drag.vbPerPx);
-          e.preventDefault();
+          if (pan && e.pointerId === pan.pointerId) {
+            var dx = e.clientX - pan.startX;
+            var dy = e.clientY - pan.startY;
+            if (!pan.captured) {
+              if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+              pan.captured = true;
+              try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+              if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
+              if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
+            }
+            applyTransform(dx * pan.vbPerPx, dy * pan.vbPerPx);
+            // Compute current virtual center and throttle-refresh tiles around it
+            var mPerVB = state.rangeNm * 1852 / 100;
+            var dxMeters = dx * pan.vbPerPx * mPerVB;
+            var dyMeters = dy * pan.vbPerPx * mPerVB;
+            var dLat = dyMeters / 111320;
+            var dLon = -dxMeters / (111320 * Math.max(0.01, Math.cos(pan.startLat * Math.PI / 180)));
+            var curLat = Math.max(-85, Math.min(85, pan.startLat + dLat));
+            var curLon = ((pan.startLon + dLon + 540) % 360) - 180;
+            throttledTileRefresh(curLat, curLon);
+            e.preventDefault();
+          }
         });
 
-        function finishDrag(e) {
-          if (!drag) return;
-          if (!drag.captured) { drag = null; return; }
-          var dx = e.clientX - drag.startX;
-          var dy = e.clientY - drag.startY;
-          var dxVB = dx * drag.vbPerPx;
-          var dyVB = dy * drag.vbPerPx;
-          var mPerVB = state.rangeNm * 1852 / 100;
-          var dxMeters = dxVB * mPerVB;
-          var dyMeters = dyVB * mPerVB;
-          var dLat = dyMeters / 111320;
-          var dLon = -dxMeters / (111320 * Math.max(0.01, Math.cos(drag.startLat * Math.PI / 180)));
-          var newLat = Math.max(-85, Math.min(85, drag.startLat + dLat));
-          var newLon = ((drag.startLon + dLon + 540) % 360) - 180;
+        function finishPointer(e) {
+          var had = !!pointers[e.pointerId];
+          if (!had) return;
+          var lastX = pointers[e.pointerId].x;
+          var lastY = pointers[e.pointerId].y;
+          delete pointers[e.pointerId];
+          var remaining = pointersArr().length;
 
-          state.center = { lat: newLat, lon: newLon, label: "Custom", id: "custom" };
-          syncCoordInputs();
-          markActivePreset();
-          clearTransform();
-          renderTiles();
-          fetchNow();
-          try { svg.releasePointerCapture(drag.pointerId); } catch (err) {}
-          drag = null;
+          if (pinch) {
+            if (remaining < 2) {
+              pinch = null;
+              renderTiles();
+              renderRadar();
+              renderShips();
+              renderOverlays();
+              fetchNow();
+              resubscribeAis();
+            }
+            return;
+          }
+          if (pan && e.pointerId === pan.pointerId) {
+            if (!pan.captured) { pan = null; return; }
+            var dx = lastX - pan.startX;
+            var dy = lastY - pan.startY;
+            var dxVB = dx * pan.vbPerPx;
+            var dyVB = dy * pan.vbPerPx;
+            var mPerVB = state.rangeNm * 1852 / 100;
+            var dxMeters = dxVB * mPerVB;
+            var dyMeters = dyVB * mPerVB;
+            var dLat = dyMeters / 111320;
+            var dLon = -dxMeters / (111320 * Math.max(0.01, Math.cos(pan.startLat * Math.PI / 180)));
+            var newLat = Math.max(-85, Math.min(85, pan.startLat + dLat));
+            var newLon = ((pan.startLon + dLon + 540) % 360) - 180;
+            state.center = { lat: newLat, lon: newLon, label: "Custom", id: "custom" };
+            syncCoordInputs();
+            markActivePreset();
+            clearTransform();
+            renderTiles();
+            renderRadar();
+            renderShips();
+            renderOverlays();
+            updateTacReadout();
+            fetchNow();
+            resubscribeAis();
+            try { svg.releasePointerCapture(pan.pointerId); } catch (err) {}
+            pan = null;
+          }
         }
 
-        svg.addEventListener("pointerup", finishDrag);
-        svg.addEventListener("pointercancel", function (e) {
-          if (!drag) return;
-          clearTransform();
-          try { svg.releasePointerCapture(drag.pointerId); } catch (err) {}
-          drag = null;
-        });
+        svg.addEventListener("pointerup", finishPointer);
+        svg.addEventListener("pointercancel", finishPointer);
       }
 
       function setupSettings() {
@@ -2457,6 +2693,10 @@
 
       // Re-render ships periodically (since positions don't redraw without it)
       setInterval(function () { if (state.aisKey) renderShips(); }, 5000);
+
+      // Refresh military aircraft registry periodically
+      refreshMilitary();
+      setInterval(refreshMilitary, 2 * 60 * 1000);
 
       // Init
       buildPresets();
