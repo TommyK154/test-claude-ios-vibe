@@ -1712,9 +1712,21 @@
 
         var track = state.tracks[state.selectedHex];
         if (track && track.length > 1) {
+          // Skip any segment whose implied groundspeed exceeds 800 kt (sanity
+          // cap above any civilian airliner) — OpenSky's tracks/all sometimes
+          // returns stale waypoints from earlier flights for the same hex,
+          // which otherwise draw as long lines zigzagging across the map.
           for (var j = 1; j < track.length; j++) {
-            var a = project({ lat: track[j - 1].lat, lon: track[j - 1].lon });
-            var b = project({ lat: track[j].lat, lon: track[j].lon });
+            var pa = track[j - 1];
+            var pb = track[j];
+            if (pa.lat == null || pa.lon == null || pb.lat == null || pb.lon == null) continue;
+            var dtSec = Math.max(1, ((pb.t || 0) - (pa.t || 0)) / 1000);
+            var segNm = haversineNm(pa.lat, pa.lon, pb.lat, pb.lon);
+            var impliedKt = (segNm / dtSec) * 3600;
+            if (impliedKt > 800) continue;
+            var a = project({ lat: pa.lat, lon: pa.lon });
+            var b = project({ lat: pb.lat, lon: pb.lon });
+            if (!isFinite(a.x) || !isFinite(a.y) || !isFinite(b.x) || !isFinite(b.y)) continue;
             var line = document.createElementNS(svgns, "line");
             line.setAttribute("x1", a.x.toFixed(2));
             line.setAttribute("y1", a.y.toFixed(2));
@@ -3910,11 +3922,13 @@
         if (obj.onGround) return false;
         if (spd < 0.3) return false;
         if (obj.baseAt == null) {
+          if (!isFinite(obj.lat) || !isFinite(obj.lon)) return false;
           obj.baseAt = Date.now();
           obj.baseLat = obj.lat;
           obj.baseLon = obj.lon;
           return false;
         }
+        if (!isFinite(obj.baseLat) || !isFinite(obj.baseLon)) return false;
         var dt = (Date.now() - obj.baseAt) / 1000;
         if (dt <= 0 || dt > (baseOlderThanMs / 1000)) return false;
         var nm = spd * (dt / 3600);
@@ -3922,8 +3936,11 @@
         var dLat = (nm * Math.cos(rad)) / 60;
         var dLon = (nm * Math.sin(rad)) /
                    (60 * Math.max(0.01, Math.cos(obj.baseLat * Math.PI / 180)));
-        obj.lat = obj.baseLat + dLat;
-        obj.lon = obj.baseLon + dLon;
+        var nextLat = obj.baseLat + dLat;
+        var nextLon = obj.baseLon + dLon;
+        if (!isFinite(nextLat) || !isFinite(nextLon)) return false;
+        obj.lat = nextLat;
+        obj.lon = nextLon;
         return true;
       }
       function deadReckonTick() {
