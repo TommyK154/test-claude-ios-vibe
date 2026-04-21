@@ -51,6 +51,10 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 - **Loading status row** on the card shows when track history, route
   lookup, and photo are still fetching so you can tell "waiting" from
   "not coming".
+- **Three ways to deselect** a plane: tap the ✕ on the details card, tap
+  the empty radar background, or tap the same plane again. After deselect
+  the plane marker stays on the map for a 30 s grace period so it doesn't
+  pop off the instant you dismiss the overlay.
 
 ### Ships (AIS, optional)
 - Ship tracking streams from `aisstream.io` via WebSocket when you paste
@@ -66,6 +70,65 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   subscription, unverified account). After 30 seconds of "connected but
   silent", the status downgrades to "NO TRAFFIC IN AREA" so silent failures
   don't masquerade as a slow day.
+- **Diagnostic strip** under the ais status line shows the subscribed
+  bounding box, message count by `MessageType`, the most recent frame type,
+  and how many ships are currently known. If messages are flowing but no
+  markers appear, the bbox is most likely mismatched with the current map
+  center — pan to a busy port (Rotterdam, Singapore, Houston) and wait.
+
+## Status (as of PR #9)
+
+- Gesture system (pan, pinch, tap-to-select, tap-to-deselect) is considered
+  stable after the PR #9 `commitPan` stale-pointer fix.
+- Sticky selection, loading status row, SIGINT anomaly chips, notable-callsign
+  banners (curated + external operator lookup), MMSI nav-status decode are
+  all shipping.
+- AIS end-to-end (user receiving ship markers on map) has not been
+  end-to-end verified with user's key; the new diagnostic strip was added
+  explicitly to make the next debugging pass faster.
+
+## Known Issues (open)
+
+- **AIS ship markers not appearing** despite a working key — under
+  investigation. Use the diagnostic strip in settings to narrow it down:
+  if `msgs 0`, it's a subscription / key / tier problem; if `msgs > 0` but
+  `ships 0`, the parse/render path is dropping frames.
+- Loiter detection is not yet implemented (roadmap item).
+
+## Future Work
+
+Ordered roughly by likely ship sequence.
+
+### SIGINT
+- **Loiter detection** — flag aircraft with a path-length / net-displacement
+  ratio > 3 over ≥ 5 min at < 5 NM displacement. Requires threshold tuning
+  against real holding patterns, medevac circles, and ISR orbits to avoid
+  false positives.
+- **Track-divergence alerts** — compare filed route (from `adsbdb`) vs
+  actual position; flag if > 50 NM off course.
+- **Callsign switching** — detect when a single ICAO24 hex changes callsign
+  mid-flight (often a mission / identity change).
+- **Squawk-change history** — log 7500 / 7600 / 7700 transitions over the
+  session, not just the current value.
+- **"Dark" reappearance** — flag aircraft that drop off ADS-B and reappear
+  after > 30 min (potential intermittent-transponder signal).
+
+### Maritime
+- **Anchor-drift detection** — vessels broadcasting "at anchor" but drifting
+  outside normal anchorages.
+- **Distress push** — AIS-SART / aground / not-under-command vessels get
+  top-of-list placement, not just a banner.
+
+### Visual
+- **Day/night terminator** — render a shaded SVG polygon over the map
+  following the solar terminator. Pure math (subsolar lat/lon from UTC),
+  recompute every 60 s. No external API; no feature dependency.
+- **Weather radar overlay** (stretch, optional).
+
+### Gesture / interaction
+- **Momentum on pan release** — decay velocity for an Apple-Maps feel
+  instead of the current hard stop.
+- **Double-tap to zoom in** — Apple-Maps convention.
 
 ## Technical
 
