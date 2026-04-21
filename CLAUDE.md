@@ -12,6 +12,16 @@ Runtime data comes from `opendata.adsb.fi`, with `api.adsb.lol` and
 auth required). The fetch layer picks the right response parser per source
 (`normalizeReadsb` for the first two, `normalizeOpenSky` for the last).
 
+Optional ship tracking: `aisstream.io` (WebSocket). User supplies their own
+API key via the ⚙ settings panel; key is stored only in `localStorage` under
+`aisstream.key`. If no key is present, ship UI is hidden and only ADS-B is
+shown.
+
+Other runtime data sources:
+- `server.arcgisonline.com` (ESRI) — satellite imagery + label tiles.
+- `api.adsbdb.com` — flight route (origin/destination airports) on tap.
+- `api.planespotters.net` — aircraft photo on tap.
+
 ## Constraints
 
 - No build step. No bundler. No package.json.
