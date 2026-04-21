@@ -84,6 +84,10 @@
       font-size: 16px;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
     }
     .tac-icon:active { background: var(--accent-soft); }
     .settings-panel {
@@ -446,8 +450,12 @@
     #tileLayer image, #labelLayer image {
       opacity: 0;
       transition: opacity 220ms ease;
+      image-rendering: auto;
+      image-rendering: -webkit-optimize-contrast;
     }
     #tileLayer image.ready, #labelLayer image.ready { opacity: 1; }
+    #tileLayer image { image-rendering: auto; }
+    #labelLayer image { image-rendering: auto; }
     .page-footer {
       margin-top: 18px;
       padding-top: 12px;
@@ -735,7 +743,12 @@
     <div class="tactical-strip">
       <span class="brand"><span class="dot" aria-hidden="true"></span>FLIGHT RADAR</span>
       <span class="readout" id="tacReadout">— · 0 NM · 0</span>
-      <button type="button" id="settingsBtn" class="tac-icon" aria-label="Settings">⚙</button>
+      <button type="button" id="settingsBtn" class="tac-icon" aria-label="Settings">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.2"/>
+          <path d="M8 1.5 L8 3.2 M8 12.8 L8 14.5 M3.4 3.4 L4.6 4.6 M11.4 11.4 L12.6 12.6 M1.5 8 L3.2 8 M12.8 8 L14.5 8 M3.4 12.6 L4.6 11.4 M11.4 4.6 L12.6 3.4"/>
+        </svg>
+      </button>
     </div>
     <div id="settingsPanel" class="settings-panel" hidden>
       <h3>Settings</h3>
@@ -1576,7 +1589,12 @@
         var earth = 40075000;
         var latR = lat * Math.PI / 180;
         var z = Math.log2(earth * Math.max(0.1, Math.cos(latR)) * radarPx / (256 * rangeMeters));
-        return Math.min(17, Math.max(3, Math.round(z)));
+        // Oversample on retina displays so each tile pixel ≈ each physical
+        // screen pixel instead of being upscaled. This is the main fidelity
+        // lever for approximating Google/Apple Maps look.
+        var dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+        var hd = dpr > 1.5 ? 1 : 0;
+        return Math.min(18, Math.max(3, Math.round(z) + hd));
       }
 
       function renderTiles() {
@@ -1601,7 +1619,8 @@
 
         // Pre-load a buffer of tiles beyond the radar circle so short pans
         // don't hit the edge. 140 instead of 100 means ~40% buffer.
-        var halfGrid = Math.min(6, Math.ceil((140 + tileSize / 2) / tileSize));
+        // At HD oversampling each tile is smaller, so cap the grid higher.
+        var halfGrid = Math.min(8, Math.ceil((140 + tileSize / 2) / tileSize));
         var svgns = "http://www.w3.org/2000/svg";
         var xlinkns = "http://www.w3.org/1999/xlink";
         var IMAGERY = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
@@ -1609,13 +1628,18 @@
 
         function placeTile(parent, url, rx, ry, size) {
           var img = document.createElementNS(svgns, "image");
-          img.setAttribute("x", rx.toFixed(2));
-          img.setAttribute("y", ry.toFixed(2));
-          img.setAttribute("width", size.toFixed(2));
-          img.setAttribute("height", size.toFixed(2));
-          img.setAttribute("preserveAspectRatio", "none");
+          // Tiny overlap (0.6 radar units) prevents hairline seams between
+          // adjacent tiles on fractional-pixel rendering.
+          var overlap = 0.6;
+          img.setAttribute("x", (rx - overlap / 2).toFixed(3));
+          img.setAttribute("y", (ry - overlap / 2).toFixed(3));
+          img.setAttribute("width", (size + overlap).toFixed(3));
+          img.setAttribute("height", (size + overlap).toFixed(3));
+          // xMidYMid meet keeps aspect ratio 1:1 (avoids stretching blur).
+          img.setAttribute("preserveAspectRatio", "xMidYMid slice");
           img.setAttributeNS(xlinkns, "href", url);
           img.setAttribute("href", url);
+          img.setAttribute("image-rendering", "optimizeQuality");
           img.addEventListener("load", function () { img.classList.add("ready"); });
           img.addEventListener("error", function () { img.remove(); });
           parent.appendChild(img);
@@ -1772,7 +1796,7 @@
       function renderList() {
         var html = "";
         if (!state.aisKey) {
-          html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in ⚙ settings to track vessels</div>';
+          html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in settings to track vessels</div>';
         }
         var ships = state.showSea && state.aisKey ? shipsInRange() : [];
         var totalContacts = (state.showAir ? state.planes.length : 0) + ships.length;
