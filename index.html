@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#faf8f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Habits</title>
+  <style>
+    :root {
+      --bg: #faf8f5;
+      --surface: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #ebe7df;
+      --accent: #4a7c6e;
+      --accent-soft: #dcebe4;
+      --shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.45;
+      min-height: 100vh;
+    }
+
+    .app {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: calc(16px + env(safe-area-inset-top)) 20px calc(120px + env(safe-area-inset-bottom));
+    }
+
+    header { padding-bottom: 4px; }
+    .date {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+    }
+    h1 {
+      font-size: 30px;
+      font-weight: 700;
+      margin: 4px 0 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .progress-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      margin-bottom: 22px;
+      box-shadow: var(--shadow);
+    }
+    .progress-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }
+    .progress-label { font-size: 14px; color: var(--muted); }
+    .progress-value { font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+    .progress-bar {
+      height: 8px;
+      background: var(--accent-soft);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+      width: 0%;
+      transition: width 500ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .habits { display: flex; flex-direction: column; gap: 10px; }
+
+    .habit {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: var(--shadow);
+      transition: background 220ms ease, border-color 220ms ease;
+    }
+    .habit.done {
+      background: var(--accent-soft);
+      border-color: transparent;
+    }
+
+    .check {
+      flex: 0 0 auto;
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      border-radius: 50%;
+      border: 2px solid #d5d0c5;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: background 220ms ease, border-color 220ms ease, transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .check:active { transform: scale(0.9); }
+    .check.done { background: var(--accent); border-color: var(--accent); }
+    .check .mark {
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      opacity: 0;
+      transform: scale(0.4) rotate(-10deg);
+      transition: opacity 200ms ease, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .check.done .mark { opacity: 1; transform: scale(1) rotate(0); }
+
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      45%  { transform: scale(1.22); }
+      100% { transform: scale(1); }
+    }
+    .check.pop { animation: pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+    .habit-body { flex: 1; min-width: 0; }
+    .habit-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+    .habit-emoji { font-size: 18px; line-height: 1; }
+    .habit-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .streak-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .dots { display: flex; gap: 5px; }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #e4ded1;
+      transition: background 200ms ease;
+    }
+    .dot.on { background: var(--accent); }
+    .streak {
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .streak.zero { color: var(--muted); font-weight: 500; }
+
+    .delete-btn {
+      flex: 0 0 auto;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 26px;
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease, color 160ms ease;
+    }
+    .delete-btn:hover { color: var(--text); }
+    .delete-btn:active { background: rgba(17, 24, 39, 0.06); }
+
+    .empty {
+      text-align: center;
+      padding: 56px 20px 20px;
+      color: var(--muted);
+    }
+    .empty .e-emoji { font-size: 44px; margin-bottom: 10px; }
+    .empty .e-title { font-size: 16px; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+    .empty .e-sub { font-size: 14px; }
+
+    .fab {
+      position: fixed;
+      right: 20px;
+      bottom: calc(24px + env(safe-area-inset-bottom));
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      font-size: 30px;
+      line-height: 1;
+      box-shadow: 0 8px 24px rgba(74, 124, 110, 0.38), 0 2px 6px rgba(74, 124, 110, 0.25);
+      cursor: pointer;
+      z-index: 10;
+      transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .fab:active { transform: scale(0.92); }
+
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 240ms ease;
+      z-index: 20;
+    }
+    .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .sheet {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      background: var(--bg);
+      border-radius: 20px 20px 0 0;
+      padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
+      transform: translateY(100%);
+      transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 21;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    .sheet.open { transform: translateY(0); }
+    .sheet h2 { margin: 0 0 18px; font-size: 20px; letter-spacing: -0.01em; }
+    .sheet label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .sheet input[type=text] {
+      width: 100%;
+      font-size: 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      min-height: 48px;
+    }
+    .sheet input[type=text]:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+      gap: 4px;
+      margin-top: 4px;
+      max-height: 184px;
+      overflow-y: auto;
+      padding: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .emoji-btn {
+      min-height: 44px;
+      min-width: 44px;
+      border: 2px solid transparent;
+      background: transparent;
+      border-radius: 10px;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+    .emoji-btn:active { transform: scale(0.9); }
+    .emoji-btn.selected {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .sheet-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn {
+      flex: 1;
+      min-height: 48px;
+      padding: 12px 18px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 140ms ease, opacity 140ms ease;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .field { margin-bottom: 16px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="date" id="dateLabel"></div>
+      <h1>Habits</h1>
+      <div class="progress-card">
+        <div class="progress-row">
+          <span class="progress-label">Today's progress</span>
+          <span class="progress-value" id="progressText">0 / 0</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+    </header>
+
+    <div class="habits" id="habitList"></div>
+    <div class="empty" id="emptyState" hidden>
+      <div class="e-emoji">🌱</div>
+      <div class="e-title">No habits yet</div>
+      <div class="e-sub">Tap + to add your first habit.</div>
+    </div>
+  </div>
+
+  <button class="fab" id="addBtn" aria-label="Add habit">+</button>
+
+  <div class="sheet-backdrop" id="backdrop"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-label="Add habit" aria-modal="true">
+    <h2>New habit</h2>
+    <div class="field">
+      <label for="habitName">Name</label>
+      <input id="habitName" type="text" maxlength="40" placeholder="Drink water" autocomplete="off" autocapitalize="sentences">
+    </div>
+    <div class="field">
+      <label>Icon</label>
+      <div class="emoji-grid" id="emojiGrid"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn" id="cancelBtn" type="button">Cancel</button>
+      <button class="btn primary" id="saveBtn" type="button">Add</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var STORAGE_KEY = "habits.v1";
+      var EMOJIS = [
+        "💧","🏃","📚","🧘","🍎","💤","✍️","🎨",
+        "🎸","🧹","🌿","☀️","💪","🚶","🧺","🧠",
+        "📵","🍵","🥗","🚰","🧴","🪥","🛏️","🙏",
+        "☕","🎯","💊","🌙","🎧","🧊","🌊","🧗",
+        "🚴","🏊","🪴","📖","🖊️","🎹","🧩","🐕",
+        "🐈","🫖","🍋","🥦","🥛","🧼","🛁","⏰"
+      ];
+
+      function todayKey(d) {
+        d = d || new Date();
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, "0");
+        var day = String(d.getDate()).padStart(2, "0");
+        return y + "-" + m + "-" + day;
+      }
+      function dayKeyOffset(offset) {
+        var d = new Date();
+        d.setDate(d.getDate() + offset);
+        return todayKey(d);
+      }
+      function prettyDate() {
+        try {
+          return new Date().toLocaleDateString(undefined, {
+            weekday: "long", month: "long", day: "numeric"
+          });
+        } catch (e) {
+          return todayKey();
+        }
+      }
+
+      function load() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return { habits: [] };
+          var parsed = JSON.parse(raw);
+          if (!parsed || !Array.isArray(parsed.habits)) return { habits: [] };
+          return parsed;
+        } catch (e) {
+          return { habits: [] };
+        }
+      }
+      function save(state) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+      }
+
+      var state = load();
+
+      function currentStreak(habit) {
+        var c = habit.completions || {};
+        var offset = c[todayKey()] ? 0 : -1;
+        var streak = 0;
+        while (c[dayKeyOffset(offset)]) {
+          streak += 1;
+          offset -= 1;
+        }
+        return streak;
+      }
+
+      function last7Dots(habit) {
+        var dots = [];
+        var c = habit.completions || {};
+        for (var i = 6; i >= 0; i--) {
+          dots.push(!!c[dayKeyOffset(-i)]);
+        }
+        return dots;
+      }
+
+      function todayCount() {
+        var t = todayKey();
+        var done = 0;
+        state.habits.forEach(function (h) {
+          if (h.completions && h.completions[t]) done += 1;
+        });
+        return { done: done, total: state.habits.length };
+      }
+
+      function uid() {
+        return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      }
+
+      function addHabit(name, emoji) {
+        state.habits.push({
+          id: uid(),
+          name: name.trim(),
+          emoji: emoji || "✨",
+          completions: {}
+        });
+        save(state);
+        render();
+      }
+
+      function deleteHabit(id) {
+        if (!window.confirm("Delete this habit?")) return;
+        state.habits = state.habits.filter(function (h) { return h.id !== id; });
+        save(state);
+        render();
+      }
+
+      function toggleHabit(id) {
+        var h = null;
+        for (var i = 0; i < state.habits.length; i++) {
+          if (state.habits[i].id === id) { h = state.habits[i]; break; }
+        }
+        if (!h) return;
+        if (!h.completions) h.completions = {};
+        var t = todayKey();
+        var becomingDone = !h.completions[t];
+        if (becomingDone) h.completions[t] = true;
+        else delete h.completions[t];
+        save(state);
+        render(becomingDone ? id : null);
+      }
+
+      var listEl = document.getElementById("habitList");
+      var emptyEl = document.getElementById("emptyState");
+      var progressText = document.getElementById("progressText");
+      var progressFill = document.getElementById("progressFill");
+      var dateLabel = document.getElementById("dateLabel");
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+          })[c];
+        });
+      }
+
+      function render(poppedId) {
+        dateLabel.textContent = prettyDate();
+
+        var tc = todayCount();
+        progressText.textContent = tc.done + " / " + tc.total;
+        var pct = tc.total > 0 ? (tc.done / tc.total) * 100 : 0;
+        progressFill.style.width = pct + "%";
+
+        if (state.habits.length === 0) {
+          listEl.innerHTML = "";
+          emptyEl.hidden = false;
+          return;
+        }
+        emptyEl.hidden = true;
+
+        var t = todayKey();
+        listEl.innerHTML = "";
+        state.habits.forEach(function (h) {
+          var isDone = !!(h.completions && h.completions[t]);
+          var streak = currentStreak(h);
+          var dots = last7Dots(h);
+
+          var row = document.createElement("div");
+          row.className = "habit" + (isDone ? " done" : "");
+          row.dataset.id = h.id;
+
+          var streakHtml = streak > 0
+            ? '<span class="streak">🔥 ' + streak + " day" + (streak === 1 ? "" : "s") + "</span>"
+            : '<span class="streak zero">Start your streak</span>';
+
+          row.innerHTML =
+            '<button class="check' + (isDone ? " done" : "") + (poppedId === h.id ? " pop" : "") + '" ' +
+              'aria-label="Toggle ' + escapeHtml(h.name) + '" aria-pressed="' + isDone + '">' +
+              '<span class="mark">✓</span>' +
+            '</button>' +
+            '<div class="habit-body">' +
+              '<div class="habit-name">' +
+                '<span class="habit-emoji">' + escapeHtml(h.emoji) + '</span>' +
+                '<span class="habit-label">' + escapeHtml(h.name) + '</span>' +
+              '</div>' +
+              '<div class="streak-row">' +
+                '<span class="dots">' +
+                  dots.map(function (on) { return '<span class="dot' + (on ? " on" : "") + '"></span>'; }).join("") +
+                '</span>' +
+                streakHtml +
+              '</div>' +
+            '</div>' +
+            '<button class="delete-btn" aria-label="Delete ' + escapeHtml(h.name) + '">×</button>';
+
+          row.querySelector(".check").addEventListener("click", function () { toggleHabit(h.id); });
+          row.querySelector(".delete-btn").addEventListener("click", function () { deleteHabit(h.id); });
+          listEl.appendChild(row);
+        });
+      }
+
+      var sheet = document.getElementById("sheet");
+      var backdrop = document.getElementById("backdrop");
+      var nameInput = document.getElementById("habitName");
+      var emojiGrid = document.getElementById("emojiGrid");
+      var saveBtn = document.getElementById("saveBtn");
+      var cancelBtn = document.getElementById("cancelBtn");
+      var addBtn = document.getElementById("addBtn");
+
+      var selectedEmoji = EMOJIS[0];
+
+      function buildEmojiGrid() {
+        emojiGrid.innerHTML = "";
+        EMOJIS.forEach(function (e) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "emoji-btn" + (e === selectedEmoji ? " selected" : "");
+          btn.textContent = e;
+          btn.setAttribute("aria-label", "Choose " + e);
+          btn.addEventListener("click", function () {
+            selectedEmoji = e;
+            var all = emojiGrid.querySelectorAll(".emoji-btn");
+            for (var i = 0; i < all.length; i++) all[i].classList.remove("selected");
+            btn.classList.add("selected");
+          });
+          emojiGrid.appendChild(btn);
+        });
+      }
+
+      function openSheet() {
+        nameInput.value = "";
+        selectedEmoji = EMOJIS[0];
+        buildEmojiGrid();
+        updateSave();
+        sheet.classList.add("open");
+        backdrop.classList.add("open");
+        setTimeout(function () { nameInput.focus(); }, 260);
+      }
+      function closeSheet() {
+        sheet.classList.remove("open");
+        backdrop.classList.remove("open");
+      }
+      function updateSave() {
+        saveBtn.disabled = nameInput.value.trim().length === 0;
+      }
+
+      addBtn.addEventListener("click", openSheet);
+      cancelBtn.addEventListener("click", closeSheet);
+      backdrop.addEventListener("click", closeSheet);
+      nameInput.addEventListener("input", updateSave);
+      nameInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !saveBtn.disabled) {
+          e.preventDefault();
+          saveBtn.click();
+        }
+      });
+      saveBtn.addEventListener("click", function () {
+        var name = nameInput.value.trim();
+        if (!name) return;
+        addHabit(name, selectedEmoji);
+        closeSheet();
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && sheet.classList.contains("open")) closeSheet();
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) render();
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
