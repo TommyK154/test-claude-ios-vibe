@@ -40,23 +40,56 @@ ship UI is hidden and only ADS-B is shown.
 
 - `state.center` — `{lat, lon, label, id}` for the current radar center.
 - `state.rangeNm` — 5 – 500 NM, logarithmic slider + pinch control.
-- `state.planes` — latest ADS-B snapshot.
+- `state.planes` — latest ADS-B snapshot (bbox-scoped).
+- `state.selectedPlaneData` — sticky snapshot of the selected plane. Kept
+  fresh by the 5 s `/hex/{hex}` fast-poll so the plane's icon, trail, and
+  route stay drawn even when it's outside the current bbox — the user can
+  pan anywhere on the map to follow the plane's path without losing it.
 - `state.ships` — current ship state keyed by MMSI.
 - `state.tracks[hex]` / `state.shipTracks[mmsi]` — accumulated position
   history; capped to 500 / 200 samples respectively; historical points
   marked with `historical: true`.
 - `state.routes[callsign]` — cached route lookups.
+- `state.aircraftOwner[hex]` — cached `adsbdb.com/v0/aircraft/{hex}` result
+  with a `label` set if the operator matches a notable-keyword pattern.
 - `state.military` — set of known military ICAO24 hexes.
 - `state.aisKey` — user's aisstream key (from localStorage).
+- `state.aisMessageCount` / `state.aisFirstMsgAt` — AIS diagnostics used
+  by the settings panel to distinguish "silent area" from "broken subscription".
 - `state.selectedHex` / `state.selectedMmsi` — current selection (mutually
-  exclusive).
+  exclusive; changing one clears the other + `state.selectedPlaneData`).
 
 ### Interaction
 
 Radar SVG handles pan (single finger) and pinch-to-zoom (two fingers)
-on the same gesture surface via `setupRadarDrag`. Pinch ends with a single
-finger still down hand off to pan cleanly. Whole square shows live data;
-the concentric rings are pure distance references (no clip-path).
+on the same gesture surface via `setupRadarDrag`. Uses an explicit
+state machine with modes `"idle"`, `"pan"`, `"pinch"`; transitions go
+through `enterPan`, `enterPinch`, `commitPan`, `commitPinch`, and
+`resetAll`. Pinch ending with one finger still down hands off cleanly
+to pan (remaining finger's current position becomes the new pan
+baseline, so the next move has dx=0). `pointercancel` always returns
+to idle and releases all captures — iOS can deliver it when the system
+intercepts a gesture. Whole square shows live data; the concentric
+rings are pure distance references (no clip-path).
+
+### SIGINT layer
+
+- Emergency squawks (7500/7600/7700) render a pulsing red halo and an
+  alert banner on the selected card.
+- Military aircraft registry from `adsb.fi/mil` (refreshed every 2 min)
+  keys `state.military`; matches render in warning-orange.
+- Notable-callsign table (`NOTABLE_CALLSIGNS` array, ~50 entries) does
+  inline exact/prefix matching every render; no network.
+- Notable-operator fallback: `api.adsbdb.com/v0/aircraft/{hex}` on
+  selection; the `registered_owner` field is regex-matched against
+  `NOTABLE_OPERATOR_KEYWORDS` (AIR FORCE, NAVY, NATO, NASA, DHS, etc.).
+- Anomaly chips on the selected card flag supersonic speed, FL550+
+  altitude, low-slow surveillance, and high vertical rates.
+- Ship nav-status decode (`NAV_STATUS_TEXT`) surfaces AIS NavigationalStatus;
+  values in `NAV_STATUS_ALERT` (not under command / aground / AIS-SART)
+  raise a red alert banner.
+- Loiter detection is explicitly **deferred to a future PR** — needs
+  threshold tuning against real holding patterns.
 
 ## Constraints
 
