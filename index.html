@@ -555,6 +555,118 @@
     }
     .sel-alert.emerg { background: rgba(255, 90, 90, 0.14); border: 1px solid #ff5a5a; color: #ff9a9a; }
     .sel-alert.mil { background: rgba(255, 158, 74, 0.14); border: 1px solid #ff9e4a; color: #ffbb80; }
+    .sel-alert.notable { background: rgba(92, 224, 202, 0.1); border: 1px solid var(--accent); color: var(--accent); }
+
+    .loading-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .ld-seg { display: inline-flex; align-items: center; gap: 4px; }
+    .ld-seg.loading .ld-v { color: var(--accent); }
+    .ld-seg .ld-k { color: var(--muted); font-weight: 700; }
+    .ld-seg .ld-v { color: var(--text); font-weight: 600; }
+    .ld-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      animation: ldPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes ldPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.7); }
+    }
+
+    .sel-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 6px 0 2px;
+    }
+    .sel-chip {
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      border: 1px solid var(--border-2);
+      background: var(--surface-2);
+      color: var(--text);
+    }
+    .sel-chip.warn {
+      background: rgba(255, 158, 74, 0.14);
+      border-color: #ff9e4a;
+      color: #ffbb80;
+    }
+
+    .legend {
+      margin: 10px 0 0;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .legend-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 8px 12px;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .legend-body {
+      display: none;
+      padding: 0 12px 10px;
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .legend.open .legend-body { display: block; }
+    .legend.open .legend-toggle .chevron { transform: rotate(180deg); }
+    .legend-body .lg-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .legend-body .lg-row:last-child { border-bottom: none; }
+    .legend-body .lg-swatch {
+      width: 20px; height: 4px;
+      border-radius: 2px;
+      flex: 0 0 auto;
+    }
+    .legend-body .lg-swatch.dashed {
+      background-image: repeating-linear-gradient(90deg, currentColor 0, currentColor 4px, transparent 4px, transparent 7px);
+      background-color: transparent !important;
+    }
+    .legend-body .lg-swatch.dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .legend-body .lg-k {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      min-width: 72px;
+      color: var(--muted);
+    }
+    .legend-body .lg-v { color: var(--text); font-size: 12px; }
     .sel-route {
       display: flex;
       align-items: center;
@@ -884,6 +996,24 @@
       </svg>
     </div>
 
+    <div class="legend" id="legend">
+      <button type="button" class="legend-toggle" id="legendToggle" aria-expanded="false">
+        <span>Legend</span>
+        <span class="chevron" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+        </span>
+      </button>
+      <div class="legend-body">
+        <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
+        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Trend</span><span class="lg-v">5-minute projection at current speed &amp; heading</span></div>
+        <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold halo marks the selected contact</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Pulsing red halo: squawk 7500 / 7600 / 7700</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange: flagged military / notable callsign</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel (SEA layer)</span></div>
+      </div>
+    </div>
+
     <div class="selected-card" id="selectedCard">
       <div class="sel-empty">Tap a plane to see details</div>
     </div>
@@ -1114,6 +1244,11 @@
         routes: {},
         selectedHex: null,
         selectedMmsi: null,
+        selectedPlaneData: null, // sticky snapshot of selected plane so trail+route+icon persist even when bulk fetch bbox drops the aircraft
+        aircraftOwner: {}, // hex -> { operator, type, ... } from adsbdb.com, cached per selection
+        aisMessageCount: 0,
+        aisFirstMsgAt: 0,
+        aisNoTrafficTimer: null,
         lastFetch: 0,
         lastError: null,
         fetching: false,
@@ -1316,6 +1451,8 @@
           var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
           var isGround = altRaw === "ground" || a.ground === true;
           var altFt = typeof altRaw === "number" ? altRaw : null;
+          var vertRate = num(a.baro_rate);
+          if (vertRate == null) vertRate = num(a.geom_rate);
           out.push({
             hex: (a.hex || "").toLowerCase(),
             callsign: call || (a.hex || "——").toUpperCase(),
@@ -1324,6 +1461,7 @@
             lat: lat,
             lon: lon,
             altFt: altFt,
+            vertRate: vertRate,
             onGround: isGround,
             gsKt: num(a.gs),
             trackDeg: num(a.track),
@@ -1347,6 +1485,9 @@
           var velMs = num(s[9]);
           var onGround = s[8] === true;
           var call = (s[1] || s[0] || "").toString().trim();
+          var vertRate = num(s[11]);
+          // OpenSky vertRate is m/s; convert to feet per minute (×196.85)
+          if (vertRate != null) vertRate = Math.round(vertRate * 196.85);
           out.push({
             hex: (s[0] || "").toLowerCase(),
             callsign: call || (s[0] || "——").toUpperCase(),
@@ -1355,6 +1496,7 @@
             lat: lat,
             lon: lon,
             altFt: altM != null ? Math.round(altM * 3.28084) : null,
+            vertRate: vertRate,
             onGround: onGround,
             gsKt: velMs != null ? velMs * 1.94384 : null,
             trackDeg: num(s[10]),
@@ -1429,10 +1571,7 @@
         routeLayer.innerHTML = "";
         vectorLayer.innerHTML = "";
         if (!state.selectedHex) return;
-        var sel = null;
-        for (var i = 0; i < state.planes.length; i++) {
-          if (state.planes[i].hex === state.selectedHex) { sel = state.planes[i]; break; }
-        }
+        var sel = getSelectedPlane();
         if (!sel) return;
         var svgns = "http://www.w3.org/2000/svg";
 
@@ -1806,7 +1945,19 @@
         planeLayer.innerHTML = "";
         var svgns = "http://www.w3.org/2000/svg";
 
-        state.planes.forEach(function (p) {
+        // Sticky-selection shadow: if the selected plane is not in the current
+        // bulk fetch (drifted out of bbox), render it anyway from the
+        // selectedPlaneData snapshot so trail/route/trend stay anchored.
+        var planes = state.planes;
+        if (state.selectedHex && state.selectedPlaneData) {
+          var inBulk = false;
+          for (var si = 0; si < planes.length; si++) {
+            if (planes[si].hex === state.selectedHex) { inBulk = true; break; }
+          }
+          if (!inBulk) planes = planes.concat([state.selectedPlaneData]);
+        }
+
+        planes.forEach(function (p) {
           var pt = project(p);
           if (!isFinite(pt.x) || !isFinite(pt.y)) return;
           // No culling — contacts render across the entire map square.
@@ -1969,11 +2120,21 @@
           var dist = s.distNm != null ? s.distNm.toFixed(1) + " NM" : "—";
           var name = escapeHtml((s.name || "").toString().toUpperCase() || ("MMSI " + s.mmsi));
           var country = mmsiCountry(s.mmsi);
+          var navText = navStatusText(s.navStatus);
+          var shipAlerts = "";
+          if (s.navStatus != null && NAV_STATUS_ALERT[s.navStatus]) {
+            shipAlerts = '<div class="sel-alert emerg">⚠ NAV · ' + escapeHtml(navText || ("STATUS " + s.navStatus)) + '</div>';
+          }
+          var navLine = navText
+            ? '<div class="sel-route sel-route-empty">NAV STATUS · ' + escapeHtml(navText) + '</div>'
+            : '';
           selectedCard.innerHTML =
             '<div class="sel-head">' +
               '<span class="sel-call">' + name + '</span>' +
               '<span class="sel-reg">MMSI ' + escapeHtml(s.mmsi) + (country ? ' · ' + escapeHtml(country) : '') + '</span>' +
             '</div>' +
+            shipAlerts +
+            navLine +
             (s.destination ? '<div class="sel-route sel-route-empty">DEST · ' + escapeHtml(s.destination) + '</div>' : '') +
             '<div class="sel-grid">' +
               '<div class="sel-cell"><span class="k">SOG</span><span class="v">' + escapeHtml(sog) + '</span></div>' +
@@ -1990,17 +2151,23 @@
           selectedCard.innerHTML = '<div class="sel-empty">Tap a contact to see details</div>';
           return;
         }
-        selectedCard.classList.remove("is-empty");
+        // Look up selected plane from bulk fetch first, sticky snapshot second.
         var p = null;
-        for (var i = 0; i < state.planes.length; i++) {
-          if (state.planes[i].hex === state.selectedHex) { p = state.planes[i]; break; }
+        for (var spi = 0; spi < state.planes.length; spi++) {
+          if (state.planes[spi].hex === state.selectedHex) { p = state.planes[spi]; break; }
         }
-        if (!p) {
-          selectedCard.classList.add("is-empty");
-          selectedCard.innerHTML = '<div class="sel-empty">Selected contact left the area</div>';
+        if (!p) p = state.selectedPlaneData;
+        if (p) {
+          selectedCard.classList.remove("is-empty");
+          renderSelectedPlaneCard(p);
           return;
         }
-        selectedCard.classList.remove("is-empty");
+        selectedCard.classList.add("is-empty");
+        selectedCard.innerHTML = '<div class="sel-empty">Acquiring…</div>';
+        return;
+      }
+
+      function renderSelectedPlaneCard(p) {
         var alt = p.onGround ? "Ground" : (p.altFt != null ? p.altFt.toLocaleString() + " ft" : "—");
         var spd = p.gsKt != null ? Math.round(p.gsKt) + " kt" : "—";
         var hdg = p.trackDeg != null ? Math.round(p.trackDeg) + "°" : "—";
@@ -2008,19 +2175,33 @@
         var typ = p.type || "—";
         var sq  = p.squawk || "—";
         var reg = p.registration ? escapeHtml(p.registration) : "";
+        var hexLower = (p.hex || "").toLowerCase();
+        var hexUpper = (p.hex || "").toUpperCase();
+        var callsign = (p.callsign || "").toString();
+        var statusRowHtml = renderLoadingRow(hexLower, callsign.toUpperCase());
         var photoHtml = renderPhotoBlock(p.hex);
-        var routeHtml = renderRouteBlock((p.callsign || "").toUpperCase());
-        var sq2 = (p.squawk || "").toString();
-        var emLabel = sq2 === "7500" ? "HIJACK" : sq2 === "7600" ? "RADIO FAIL" : sq2 === "7700" ? "EMERGENCY" : "";
+        var routeHtml = renderRouteBlock(callsign.toUpperCase());
+        // Banners: emergency, military, notable (curated + operator), anomalies
         var alertsHtml = "";
+        var sq2 = sq.toString();
+        var emLabel = sq2 === "7500" ? "HIJACK" : sq2 === "7600" ? "RADIO FAIL" : sq2 === "7700" ? "EMERGENCY" : "";
         if (emLabel) alertsHtml += '<div class="sel-alert emerg">⚠ ' + emLabel + ' · SQUAWK ' + sq2 + '</div>';
-        if (state.military && state.military[(p.hex || "").toLowerCase()]) alertsHtml += '<div class="sel-alert mil">MIL · TRACKED AS MILITARY</div>';
+        if (state.military && state.military[hexLower]) alertsHtml += '<div class="sel-alert mil">MIL · TRACKED AS MILITARY</div>';
+        var notable = callsign ? matchNotableCallsign(callsign) : null;
+        if (notable) {
+          alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(notable.label) + '</div>';
+        } else if (state.aircraftOwner[hexLower] && state.aircraftOwner[hexLower].label) {
+          alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
+        }
+        var anomaliesHtml = renderAnomalyChips(p);
         selectedCard.innerHTML =
+          statusRowHtml +
           '<div class="sel-head">' +
-            '<span class="sel-call">' + escapeHtml(p.callsign) + '</span>' +
+            '<span class="sel-call">' + escapeHtml(callsign || hexUpper) + '</span>' +
             '<span class="sel-reg">' + reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "") + '</span>' +
           '</div>' +
           alertsHtml +
+          anomaliesHtml +
           routeHtml +
           photoHtml +
           '<div class="sel-grid">' +
@@ -2029,8 +2210,75 @@
             '<div class="sel-cell"><span class="k">Heading</span><span class="v">' + escapeHtml(hdg) + '</span></div>' +
             '<div class="sel-cell"><span class="k">Distance</span><span class="v">' + escapeHtml(dist) + '</span></div>' +
             '<div class="sel-cell"><span class="k">Squawk</span><span class="v">' + escapeHtml(sq) + '</span></div>' +
-            '<div class="sel-cell"><span class="k">Hex</span><span class="v">' + escapeHtml((p.hex || "").toUpperCase()) + '</span></div>' +
+            '<div class="sel-cell"><span class="k">Hex</span><span class="v">' + escapeHtml(hexUpper) + '</span></div>' +
           '</div>';
+      }
+
+      // --- loading-row helpers ---
+      function renderLoadingRow(hex, callsign) {
+        var trackStatus = trackStatusText(hex);
+        var routeStatus = routeStatusText(callsign);
+        var photoStatus = photoStatusText(hex);
+        function seg(label, value, loading) {
+          return '<span class="ld-seg' + (loading ? " loading" : "") + '"><span class="ld-k">' + label + '</span>' +
+                 (loading ? '<span class="ld-dot"></span>' : '') +
+                 '<span class="ld-v">' + escapeHtml(value) + '</span></span>';
+        }
+        return '<div class="loading-row">' +
+          seg("TRACK", trackStatus.text, trackStatus.loading) +
+          seg("ROUTE", routeStatus.text, routeStatus.loading) +
+          seg("PHOTO", photoStatus.text, photoStatus.loading) +
+        '</div>';
+      }
+      function trackStatusText(hex) {
+        if (!hex) return { text: "—", loading: false };
+        var t = state.tracks[hex];
+        var fetched = state.historicalFetched[hex];
+        if (!fetched) return { text: "LOADING HISTORY…", loading: true };
+        if (!t || t.length < 2) return { text: "LIVE ONLY", loading: false };
+        var first = t[0], last = t[t.length - 1];
+        var minutes = Math.max(1, Math.round((last.t - first.t) / 60000));
+        return { text: t.length + " PTS · " + minutes + " MIN", loading: false };
+      }
+      function routeStatusText(callsign) {
+        if (!callsign) return { text: "—", loading: false };
+        var r = state.routes[callsign];
+        if (!r) return { text: "—", loading: false };
+        if (r.state === "loading") return { text: "LOOKING UP…", loading: true };
+        if (r.state === "ok") {
+          var oCode = r.origin.iata || r.origin.icao || "?";
+          var dCode = r.destination.iata || r.destination.icao || "?";
+          return { text: oCode + " → " + dCode, loading: false };
+        }
+        return { text: "NOT FOUND", loading: false };
+      }
+      function photoStatusText(hex) {
+        if (!hex) return { text: "—", loading: false };
+        var c = photoCache[hex.toLowerCase()];
+        if (!c) return { text: "—", loading: false };
+        if (c.state === "loading") return { text: "LOADING…", loading: true };
+        if (c.state === "ok") return { text: "VIA PLANESPOTTERS", loading: false };
+        if (c.state === "none") return { text: "NONE AVAILABLE", loading: false };
+        return { text: "UNAVAILABLE", loading: false };
+      }
+
+      function renderAnomalyChips(p) {
+        var chips = [];
+        if (!p.onGround) {
+          if (p.gsKt != null && p.gsKt > 700) chips.push({ text: "SUPERSONIC " + Math.round(p.gsKt) + " kt", cls: "warn" });
+          if (p.altFt != null && p.altFt > 55000) chips.push({ text: "FL" + Math.round(p.altFt / 100), cls: "warn" });
+          if (p.altFt != null && p.altFt < 3000 && p.gsKt != null && p.gsKt < 80 && p.gsKt > 5)
+            chips.push({ text: "LOW-SLOW", cls: "warn" });
+          if (p.vertRate != null && Math.abs(p.vertRate) > 4000)
+            chips.push({ text: "VR " + (p.vertRate > 0 ? "+" : "") + Math.round(p.vertRate) + " FPM", cls: "warn" });
+        }
+        if (!chips.length) return "";
+        var html = '<div class="sel-chips">';
+        chips.forEach(function (c) {
+          html += '<span class="sel-chip ' + c.cls + '">' + escapeHtml(c.text) + '</span>';
+        });
+        html += '</div>';
+        return html;
       }
 
       function renderRouteBlock(callsign) {
@@ -2107,19 +2355,163 @@
 
       function selectPlane(hex) {
         if (!hex) return;
-        state.selectedHex = (state.selectedHex === hex) ? null : hex;
+        var wasSelected = state.selectedHex === hex;
         stopSelectedPoll();
-        if (state.selectedHex) {
-          fetchPlanePhoto(state.selectedHex);
+        if (wasSelected) {
+          // Deselecting — clear all sticky-selection state.
+          state.selectedHex = null;
+          state.selectedPlaneData = null;
+        } else {
+          state.selectedHex = hex;
+          // Snapshot the plane from the current bulk fetch (if present) so
+          // trail/route/icon stay drawn even after the plane leaves the bbox.
           var sp = null;
-          for (var i = 0; i < state.planes.length; i++) if (state.planes[i].hex === state.selectedHex) { sp = state.planes[i]; break; }
+          for (var i = 0; i < state.planes.length; i++) {
+            if (state.planes[i].hex === state.selectedHex) { sp = state.planes[i]; break; }
+          }
+          state.selectedPlaneData = sp ? Object.assign({}, sp) : null;
+          fetchPlanePhoto(state.selectedHex);
           if (sp && sp.callsign) fetchRoute(sp.callsign);
+          fetchAircraftOwner(state.selectedHex);
           startSelectedPoll(state.selectedHex);
         }
         renderRadar();
         renderList();
         renderSelected();
         renderOverlays();
+      }
+
+      // Returns the currently-selected plane data, preferring the live bulk
+      // fetch match but falling back to the sticky selectedPlaneData so a
+      // plane that drifts out of the bbox doesn't lose its overlays.
+      function getSelectedPlane() {
+        if (!state.selectedHex) return null;
+        for (var i = 0; i < state.planes.length; i++) {
+          if (state.planes[i].hex === state.selectedHex) return state.planes[i];
+        }
+        return state.selectedPlaneData || null;
+      }
+
+      // Curated notable-callsign table. Instant match on every fetch so
+      // famous mission callsigns are flagged with zero latency.
+      var NOTABLE_CALLSIGNS = [
+        // Head of state / US executive
+        { pattern: "AF1",     kind: "exact",  label: "AIR FORCE ONE" },
+        { pattern: "AF2",     kind: "exact",  label: "AIR FORCE TWO" },
+        { pattern: "SAM",     kind: "prefix", label: "US SPECIAL AIR MISSION" },
+        { pattern: "VENUS",   kind: "prefix", label: "US EXECUTIVE SUPPORT" },
+        { pattern: "EXEC1F",  kind: "prefix", label: "US EXECUTIVE ONE FOXTROT" },
+        // AWACS / AEW
+        { pattern: "NATO",    kind: "prefix", label: "NATO AWACS" },
+        { pattern: "MAGIC",   kind: "prefix", label: "NATO / FRENCH AWACS" },
+        { pattern: "SENTRY",  kind: "prefix", label: "USAF AWACS (E-3)" },
+        { pattern: "OKWTN",   kind: "prefix", label: "UK E-3 / AEW" },
+        // USAF tankers / transport
+        { pattern: "SNAKE",   kind: "prefix", label: "USAF TANKER" },
+        { pattern: "REACH",   kind: "prefix", label: "USAF STRATEGIC AIRLIFT" },
+        { pattern: "CONDOR",  kind: "prefix", label: "USAF TANKER / HAWAII ANG" },
+        { pattern: "CINDY",   kind: "prefix", label: "USAF / ANG TANKER" },
+        { pattern: "QID",     kind: "prefix", label: "USAF TANKER" },
+        { pattern: "TEAL",    kind: "prefix", label: "USAF HURRICANE HUNTER" },
+        { pattern: "NOAA",    kind: "prefix", label: "NOAA WEATHER RECON" },
+        // Maritime patrol
+        { pattern: "FORTE",   kind: "prefix", label: "USAF / USN ISR" },
+        { pattern: "BATOV",   kind: "prefix", label: "NATO MARITIME PATROL" },
+        { pattern: "PELICAN", kind: "prefix", label: "USCG FIXED-WING" },
+        { pattern: "COAST",   kind: "prefix", label: "US COAST GUARD" },
+        // Test / research
+        { pattern: "NASA",    kind: "prefix", label: "NASA RESEARCH" },
+        { pattern: "RSCH",    kind: "prefix", label: "RESEARCH / TEST FLIGHT" },
+        { pattern: "TESTOP",  kind: "prefix", label: "USAF TEST SQUADRON" },
+        { pattern: "BOE",     kind: "prefix", label: "BOEING TEST" },
+        { pattern: "EDW",     kind: "prefix", label: "EDWARDS AFB TEST" },
+        // Surveillance drones
+        { pattern: "JAKE",    kind: "prefix", label: "USAF ISR DRONE" },
+        { pattern: "RQ4",     kind: "prefix", label: "USAF GLOBAL HAWK" },
+        { pattern: "TRITON",  kind: "prefix", label: "USN MQ-4C TRITON" },
+        // UK / RAF
+        { pattern: "RRR",     kind: "prefix", label: "RAF TRANSPORT" },
+        { pattern: "KITTY",   kind: "prefix", label: "RAF VOYAGER TANKER" },
+        { pattern: "VIKING",  kind: "prefix", label: "NATO / RAF" },
+        { pattern: "ASCOT",   kind: "prefix", label: "RAF TRANSPORT" },
+        // German Luftwaffe
+        { pattern: "GAF",     kind: "prefix", label: "GERMAN AIR FORCE" },
+        { pattern: "LUFTWAFFE", kind: "prefix", label: "GERMAN AIR FORCE" },
+        // French AF
+        { pattern: "FAF",     kind: "prefix", label: "FRENCH AIR FORCE" },
+        { pattern: "CTM",     kind: "prefix", label: "FRENCH MILITARY TRANSPORT" },
+        // Dutch / other NATO
+        { pattern: "NAF",     kind: "prefix", label: "NETHERLANDS AF" },
+        { pattern: "IAM",     kind: "prefix", label: "ITALIAN AIR FORCE" },
+        { pattern: "CFC",     kind: "prefix", label: "CANADIAN FORCES" },
+        { pattern: "CANFORCE", kind: "prefix", label: "CANADIAN FORCES" },
+        // USAF training / other
+        { pattern: "DUKE",    kind: "prefix", label: "USAF / US ARMY" },
+        { pattern: "HAWK",    kind: "prefix", label: "USAF TRAINING" },
+        // Medevac / state emergency
+        { pattern: "MEDEVAC", kind: "prefix", label: "MEDICAL EVAC" },
+        { pattern: "LIFEFLT", kind: "prefix", label: "MEDICAL TRANSPORT" },
+        // Law enforcement
+        { pattern: "FBI",     kind: "prefix", label: "FBI" },
+        { pattern: "DHS",     kind: "prefix", label: "US DHS / CBP" },
+        { pattern: "OMAHA",   kind: "prefix", label: "USAF E-6 DOOMSDAY" },
+        { pattern: "LOOKING", kind: "prefix", label: "USAF E-6 MERCURY" }
+      ];
+      function matchNotableCallsign(callsign) {
+        if (!callsign) return null;
+        var q = callsign.toString().trim().toUpperCase();
+        if (!q) return null;
+        for (var i = 0; i < NOTABLE_CALLSIGNS.length; i++) {
+          var n = NOTABLE_CALLSIGNS[i];
+          if (n.kind === "exact" && q === n.pattern) return n;
+          if (n.kind === "prefix" && q.indexOf(n.pattern) === 0) return n;
+        }
+        return null;
+      }
+
+      // Operator lookup via adsbdb.com. Called on plane selection. Caches
+      // result in state.aircraftOwner[hex] so repeated selections don't refetch.
+      var NOTABLE_OPERATOR_KEYWORDS = [
+        { re: /\bAIR\s*FORCE\b/i,        label: "AIR FORCE" },
+        { re: /\b(NAVY|NAVAL)\b/i,       label: "NAVY" },
+        { re: /\bARMY\b/i,               label: "ARMY" },
+        { re: /\bMARINE\s*CORPS\b/i,     label: "US MARINES" },
+        { re: /\bCOAST\s*GUARD\b/i,      label: "COAST GUARD" },
+        { re: /\bNATO\b/i,               label: "NATO" },
+        { re: /\bNASA\b/i,               label: "NASA" },
+        { re: /\bROYAL\s*AIR\s*FORCE\b/i, label: "ROYAL AIR FORCE" },
+        { re: /\bLUFTWAFFE\b/i,          label: "LUFTWAFFE" },
+        { re: /\bGOUVERNEMENT|GOVERNMENT\b/i, label: "GOVERNMENT" },
+        { re: /\bFBI\b/i,                label: "FBI" },
+        { re: /\bDHS\b|CUSTOMS|BORDER/i, label: "DHS / CBP" },
+        { re: /\bSTATE\s*POLICE|SHERIFF\b/i, label: "LAW ENFORCEMENT" },
+        { re: /\bHURRICANE\s*HUNTERS?\b/i, label: "HURRICANE HUNTERS" },
+        { re: /\bBOEING\s+TEST|TEST\s+FLIGHT\b/i, label: "TEST FLIGHT" }
+      ];
+      function fetchAircraftOwner(hex) {
+        if (!hex) return;
+        var key = hex.toLowerCase();
+        if (state.aircraftOwner[key]) return;
+        state.aircraftOwner[key] = { state: "loading" };
+        var base = "https://api.adsbdb.com/v0/aircraft/" + encodeURIComponent(key);
+        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
+        tryPhotoUrls(urls, 0).then(function (data) {
+          var a = data && data.response && (data.response.aircraft || data.response);
+          var operator = (a && (a.registered_owner || a.owner || a.operator_flag_code || a.operator)) || "";
+          var label = null;
+          if (operator) {
+            for (var i = 0; i < NOTABLE_OPERATOR_KEYWORDS.length; i++) {
+              if (NOTABLE_OPERATOR_KEYWORDS[i].re.test(operator)) {
+                label = NOTABLE_OPERATOR_KEYWORDS[i].label + " · " + operator.toUpperCase();
+                break;
+              }
+            }
+          }
+          state.aircraftOwner[key] = { state: "ok", operator: operator, label: label };
+          if (state.selectedHex === key) renderSelected();
+        }).catch(function () {
+          state.aircraftOwner[key] = { state: "error" };
+        });
       }
 
       function startSelectedPoll(hex) {
@@ -2180,7 +2572,12 @@
           var lat = (typeof a.lat === "number") ? a.lat : null;
           var lon = (typeof a.lon === "number") ? a.lon : null;
           if (lat == null || lon == null) return;
-          // update in planes array if present
+          var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
+          var onGround = altRaw === "ground" || a.ground === true;
+          var altFt = typeof altRaw === "number" ? altRaw : null;
+          var vr = (typeof a.baro_rate === "number") ? a.baro_rate
+                 : (typeof a.geom_rate === "number") ? a.geom_rate : null;
+          // Update the in-bbox plane if present…
           var found = null;
           for (var i = 0; i < state.planes.length; i++) {
             if (state.planes[i].hex === hex.toLowerCase()) { found = state.planes[i]; break; }
@@ -2188,22 +2585,43 @@
           if (found) {
             found.lat = lat;
             found.lon = lon;
-            var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
-            found.altFt = typeof altRaw === "number" ? altRaw : found.altFt;
+            if (altFt != null) found.altFt = altFt;
             if (typeof a.gs === "number") found.gsKt = a.gs;
             if (typeof a.track === "number") found.trackDeg = a.track;
-            found.onGround = altRaw === "ground" || a.ground === true;
+            if (vr != null) found.vertRate = vr;
+            found.onGround = onGround;
             found.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
           }
-          // append to track history
-          var t = state.tracks[hex.toLowerCase()] || (state.tracks[hex.toLowerCase()] = []);
-          var last = t.length ? t[t.length - 1] : null;
-          if (!last || Math.abs(last.lat - lat) > 0.0001 || Math.abs(last.lon - lon) > 0.0001) {
-            t.push({ lat: lat, lon: lon, t: Date.now() });
-            if (t.length > 300) t.shift();
+          // …and always refresh the sticky selected-plane snapshot so the
+          // trail/icon/route stay correct when the plane is outside the bbox.
+          var base2 = (found ? Object.assign({}, found) : (state.selectedPlaneData || {}));
+          base2.hex = hex.toLowerCase();
+          base2.lat = lat;
+          base2.lon = lon;
+          if (altFt != null) base2.altFt = altFt;
+          if (typeof a.gs === "number") base2.gsKt = a.gs;
+          if (typeof a.track === "number") base2.trackDeg = a.track;
+          if (vr != null) base2.vertRate = vr;
+          base2.onGround = onGround;
+          var callsign = (a.flight || "").toString().trim();
+          if (callsign) base2.callsign = callsign;
+          if (a.r) base2.registration = a.r;
+          if (a.t) base2.type = a.t;
+          if (a.squawk) base2.squawk = a.squawk;
+          base2.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
+          state.selectedPlaneData = base2;
+          if (base2.callsign && !state.routes[base2.callsign.toUpperCase()]) fetchRoute(base2.callsign);
+          // Append to track history keyed by hex (works regardless of bbox).
+          var tkey = hex.toLowerCase();
+          var t = state.tracks[tkey] || (state.tracks[tkey] = []);
+          var prev = t.length ? t[t.length - 1] : null;
+          if (!prev || Math.abs(prev.lat - lat) > 0.0001 || Math.abs(prev.lon - lon) > 0.0001) {
+            t.push({ lat: lat, lon: lon, t: Date.now(), alt: altFt });
+            if (t.length > 500) t.shift();
           }
           renderRadar();
           renderOverlays();
+          renderSelected();
         }).catch(function () { /* ignore — retry on next tick */ });
       }
 
@@ -2390,69 +2808,137 @@
       function setupRadarDrag() {
         var svg = document.getElementById("radar");
         if (!svg) return;
-        var layers = function () {
-          return [
-            document.getElementById("tileLayer"),
-            document.getElementById("labelLayer"),
-            document.getElementById("planeLayer"),
-            document.getElementById("shipLayer"),
-            document.getElementById("trackLayer"),
-            document.getElementById("routeLayer"),
-            document.getElementById("vectorLayer")
-          ].filter(function (x) { return x; });
-        };
-        var pointers = {};
-        var pan = null;
-        var pinch = null;
-        var refreshTileTimer = null;
 
-        function pointersArr() {
-          var out = [];
-          for (var k in pointers) out.push(pointers[k]);
-          return out;
+        // Explicit gesture state machine. The only legal transitions are
+        // in the transition functions below; all mutation goes through them.
+        var mode = "idle";       // "idle" | "pan" | "pinch"
+        var pointers = {};       // pointerId -> { x, y }
+        var panStart = null;     // snapshot when entering pan
+        var pinchStart = null;   // snapshot when entering pinch
+
+        var LAYER_IDS = ["tileLayer", "labelLayer", "planeLayer", "shipLayer",
+                         "trackLayer", "routeLayer", "vectorLayer"];
+        function layers() {
+          return LAYER_IDS.map(function (id) { return document.getElementById(id); })
+                          .filter(function (x) { return x; });
         }
         function applyTransform(dxVB, dyVB) {
           var t = "translate(" + dxVB.toFixed(2) + " " + dyVB.toFixed(2) + ")";
-          var ls = layers();
-          for (var i = 0; i < ls.length; i++) ls[i].setAttribute("transform", t);
+          layers().forEach(function (l) { l.setAttribute("transform", t); });
         }
         function clearTransform() {
-          var ls = layers();
-          for (var i = 0; i < ls.length; i++) ls[i].removeAttribute("transform");
+          layers().forEach(function (l) { l.removeAttribute("transform"); });
         }
-        function startPanFor(pointerId, startX, startY) {
+        function pointerCount() { return Object.keys(pointers).length; }
+        function twoPointers() {
+          var ids = Object.keys(pointers);
+          if (ids.length < 2) return null;
+          return [pointers[ids[0]], pointers[ids[1]]];
+        }
+        function suspendAutoRefresh() {
+          if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
+          if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
+        }
+        function releaseAllCaptures() {
+          Object.keys(pointers).forEach(function (id) {
+            try { svg.releasePointerCapture(parseInt(id, 10)); } catch (e) {}
+          });
+        }
+        function resetAll() {
+          mode = "idle";
+          panStart = null;
+          pinchStart = null;
+          releaseAllCaptures();
+          clearTransform();
+        }
+
+        // --- transitions ---
+
+        function enterPan(pointerId, x, y) {
           var rect = svg.getBoundingClientRect();
-          pan = {
+          mode = "pan";
+          pinchStart = null;
+          panStart = {
             pointerId: pointerId,
-            startX: startX,
-            startY: startY,
+            startX: x,
+            startY: y,
             startLat: state.center.lat,
             startLon: state.center.lon,
             vbPerPx: 220 / rect.width,
             captured: false
           };
         }
-        function startPan(e) { startPanFor(e.pointerId, e.clientX, e.clientY); }
-        function startPinch() {
-          var ps = pointersArr();
-          if (ps.length < 2) return;
-          var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
-          pinch = { initialDist: Math.max(10, d), initialRangeNm: state.rangeNm };
-          // Release any lingering pointer capture from the pan we're aborting
-          if (pan && pan.pointerId != null) {
-            try { svg.releasePointerCapture(pan.pointerId); } catch (err) {}
+
+        function enterPinch() {
+          var two = twoPointers();
+          if (!two) return;
+          var d = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
+          mode = "pinch";
+          pinchStart = { initialDist: Math.max(10, d), initialRangeNm: state.rangeNm };
+          // Abandon any in-progress pan cleanly.
+          if (panStart && panStart.captured) {
+            try { svg.releasePointerCapture(panStart.pointerId); } catch (e) {}
           }
+          panStart = null;
           clearTransform();
-          pan = null;
-          if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
+          suspendAutoRefresh();
         }
+
+        function commitPinch() {
+          pinchStart = null;
+          mode = "idle";
+          renderTiles();
+          renderRadar();
+          renderShips();
+          renderOverlays();
+          fetchNow();
+          resubscribeAis();
+        }
+
+        function commitPan() {
+          if (!panStart) { mode = "idle"; return; }
+          if (!panStart.captured) {
+            panStart = null;
+            mode = "idle";
+            return;
+          }
+          var p = pointers[panStart.pointerId] || { x: panStart.startX, y: panStart.startY };
+          var dx = p.x - panStart.startX;
+          var dy = p.y - panStart.startY;
+          var dxVB = dx * panStart.vbPerPx;
+          var dyVB = dy * panStart.vbPerPx;
+          var mPerVB = state.rangeNm * 1852 / 100;
+          var dLat = (dyVB * mPerVB) / 111320;
+          var dLon = -(dxVB * mPerVB) / (111320 * Math.max(0.01, Math.cos(panStart.startLat * Math.PI / 180)));
+          var newLat = Math.max(-85, Math.min(85, panStart.startLat + dLat));
+          var newLon = ((panStart.startLon + dLon + 540) % 360) - 180;
+          state.center = { lat: newLat, lon: newLon, label: "Custom", id: "custom" };
+          try { svg.releasePointerCapture(panStart.pointerId); } catch (e) {}
+          panStart = null;
+          mode = "idle";
+          syncCoordInputs();
+          markActivePreset();
+          clearTransform();
+          renderTiles();
+          renderRadar();
+          renderShips();
+          renderOverlays();
+          updateTacReadout();
+          fetchNow();
+          resubscribeAis();
+        }
+
+        // --- event handlers ---
 
         svg.addEventListener("pointerdown", function (e) {
           if (e.pointerType === "mouse" && e.button !== 0) return;
           pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-          var n = pointersArr().length;
-          if (n === 1) startPan(e);
-          else if (n === 2) startPinch();
+          var n = pointerCount();
+          if (n === 1 && mode === "idle") {
+            enterPan(e.pointerId, e.clientX, e.clientY);
+          } else if (n >= 2 && mode !== "pinch") {
+            enterPinch();
+          }
         });
 
         svg.addEventListener("pointermove", function (e) {
@@ -2460,94 +2946,78 @@
           pointers[e.pointerId].x = e.clientX;
           pointers[e.pointerId].y = e.clientY;
 
-          if (pinch) {
-            var ps = pointersArr();
-            if (ps.length < 2) return;
-            var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+          if (mode === "pinch" && pinchStart) {
+            var two = twoPointers();
+            if (!two) return;
+            var d = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
             if (d < 10) return;
-            var ratio = pinch.initialDist / d;
-            var newNm = pinch.initialRangeNm * ratio;
-            applyRange(newNm, { skipFetch: true });
+            var ratio = pinchStart.initialDist / d;
+            var newNm = pinchStart.initialRangeNm * ratio;
+            // skipRender avoids churning the tile grid on every move frame;
+            // tiles redraw once on commitPinch.
+            applyRange(newNm, { skipFetch: true, skipRender: true });
             e.preventDefault();
             return;
           }
-          if (pan && e.pointerId === pan.pointerId) {
-            var dx = e.clientX - pan.startX;
-            var dy = e.clientY - pan.startY;
-            if (!pan.captured) {
+
+          if (mode === "pan" && panStart && e.pointerId === panStart.pointerId) {
+            var dx = e.clientX - panStart.startX;
+            var dy = e.clientY - panStart.startY;
+            if (!panStart.captured) {
               if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-              pan.captured = true;
+              panStart.captured = true;
               try { svg.setPointerCapture(e.pointerId); } catch (err) {}
-              if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
-              if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
+              suspendAutoRefresh();
             }
-            // Pure CSS transform during drag — no DOM thrashing. The pre-loaded
-            // tile buffer (halfGrid up to 8, ~40% beyond circle) covers typical
-            // drag distances; anything beyond that snaps in at pointerup.
-            applyTransform(dx * pan.vbPerPx, dy * pan.vbPerPx);
+            applyTransform(dx * panStart.vbPerPx, dy * panStart.vbPerPx);
             e.preventDefault();
           }
         });
 
-        function finishPointer(e) {
-          var had = !!pointers[e.pointerId];
-          if (!had) return;
-          var lastX = pointers[e.pointerId].x;
-          var lastY = pointers[e.pointerId].y;
+        function onPointerEnd(e) {
+          if (!(e.pointerId in pointers)) return;
           delete pointers[e.pointerId];
-          var remaining = pointersArr().length;
+          var remaining = pointerCount();
 
-          if (pinch) {
-            if (remaining < 2) {
-              pinch = null;
-              renderTiles();
-              renderRadar();
-              renderShips();
-              renderOverlays();
-              fetchNow();
-              resubscribeAis();
-              // Hand off to single-finger pan if one finger is still down.
-              if (remaining === 1) {
-                var ids = Object.keys(pointers);
-                if (ids.length === 1) {
-                  var remPt = pointers[ids[0]];
-                  startPanFor(parseInt(ids[0], 10), remPt.x, remPt.y);
-                }
-              }
+          if (mode === "pinch") {
+            if (remaining === 0) {
+              commitPinch();
+            } else if (remaining === 1) {
+              // Commit the pinch's range change, then hand off to pan for
+              // the remaining finger starting at its CURRENT position (so
+              // the next pointermove has dx=0 instead of an accumulated
+              // delta from before the pinch).
+              commitPinch();
+              var id = Object.keys(pointers)[0];
+              var pt = pointers[id];
+              enterPan(parseInt(id, 10), pt.x, pt.y);
             }
+            // If remaining >= 2, a third finger lifted — stay in pinch.
             return;
           }
-          if (pan && e.pointerId === pan.pointerId) {
-            if (!pan.captured) { pan = null; return; }
-            var dx = lastX - pan.startX;
-            var dy = lastY - pan.startY;
-            var dxVB = dx * pan.vbPerPx;
-            var dyVB = dy * pan.vbPerPx;
-            var mPerVB = state.rangeNm * 1852 / 100;
-            var dxMeters = dxVB * mPerVB;
-            var dyMeters = dyVB * mPerVB;
-            var dLat = dyMeters / 111320;
-            var dLon = -dxMeters / (111320 * Math.max(0.01, Math.cos(pan.startLat * Math.PI / 180)));
-            var newLat = Math.max(-85, Math.min(85, pan.startLat + dLat));
-            var newLon = ((pan.startLon + dLon + 540) % 360) - 180;
-            state.center = { lat: newLat, lon: newLon, label: "Custom", id: "custom" };
-            syncCoordInputs();
-            markActivePreset();
-            clearTransform();
-            renderTiles();
-            renderRadar();
-            renderShips();
-            renderOverlays();
-            updateTacReadout();
-            fetchNow();
-            resubscribeAis();
-            try { svg.releasePointerCapture(pan.pointerId); } catch (err) {}
-            pan = null;
+
+          if (mode === "pan" && panStart && e.pointerId === panStart.pointerId) {
+            if (remaining === 0) {
+              commitPan();
+            } else {
+              // The pan-owning pointer lifted but others remain. Cancel
+              // the pan without committing; let the next pointerdown/up
+              // sequence decide the next mode.
+              panStart = null;
+              mode = "idle";
+              clearTransform();
+            }
           }
         }
 
-        svg.addEventListener("pointerup", finishPointer);
-        svg.addEventListener("pointercancel", finishPointer);
+        svg.addEventListener("pointerup", onPointerEnd);
+        svg.addEventListener("pointercancel", function (e) {
+          // iOS occasionally delivers pointercancel instead of pointerup
+          // when the system takes over the gesture (e.g. multi-app
+          // switcher). Reset everything to a clean idle state.
+          delete pointers[e.pointerId];
+          resetAll();
+        });
       }
 
       function setupSettings() {
@@ -2652,6 +3122,8 @@
           state.aisSocket = ws;
           ws.addEventListener("open", function () {
             state.aisReconnectAttempts = 0;
+            state.aisMessageCount = 0;
+            state.aisFirstMsgAt = 0;
             var bb = bboxForCenter();
             ws.send(JSON.stringify({
               APIKey: state.aisKey,
@@ -2659,10 +3131,34 @@
               FilterMessageTypes: ["PositionReport", "ShipStaticData"]
             }));
             aisStatus("AIS CONNECTED · WAITING FOR TRAFFIC", "ok");
+            // If we don't see a single message in 30 s, downgrade the
+            // status so the user knows it's quiet (vs. broken).
+            if (state.aisNoTrafficTimer) clearTimeout(state.aisNoTrafficTimer);
+            state.aisNoTrafficTimer = setTimeout(function () {
+              if (state.aisMessageCount === 0) {
+                aisStatus("AIS CONNECTED · NO TRAFFIC IN AREA (try moving the map or lowering range)", "ok");
+              }
+            }, 30000);
           });
           ws.addEventListener("message", function (e) {
             try {
               var msg = JSON.parse(e.data);
+              // Error frames from aisstream (malformed subscription, bad key,
+              // unverified account, etc.) arrive as a type we need to surface.
+              var mt = (msg && (msg.MessageType || msg.messageType || "")).toString();
+              if (mt && mt.toLowerCase() === "error") {
+                var err = msg.Error || msg.error || msg.message || "unknown";
+                aisStatus("AIS: " + String(err).toUpperCase(), "err");
+                return;
+              }
+              state.aisMessageCount += 1;
+              if (state.aisMessageCount === 1) {
+                state.aisFirstMsgAt = Date.now();
+                if (state.aisNoTrafficTimer) { clearTimeout(state.aisNoTrafficTimer); state.aisNoTrafficTimer = null; }
+                aisStatus("AIS STREAMING · " + state.aisMessageCount + " MSG", "ok");
+              } else if (state.aisMessageCount % 10 === 0) {
+                aisStatus("AIS STREAMING · " + state.aisMessageCount + " MSG", "ok");
+              }
               var md = msg.MetaData || {};
               var mmsi = md.MMSI || md.MMSI_String;
               if (!mmsi) return;
@@ -2789,7 +3285,22 @@
         state.selectedMmsi = (state.selectedMmsi === mmsi) ? null : mmsi;
         if (state.selectedHex) stopSelectedPoll();
         state.selectedHex = null;
+        state.selectedPlaneData = null;
         renderRadar(); renderShips(); renderList(); renderSelected(); renderOverlays();
+      }
+
+      var NAV_STATUS_TEXT = [
+        "UNDER WAY (ENGINE)", "AT ANCHOR", "NOT UNDER COMMAND",
+        "RESTRICTED MANOEUVERABILITY", "CONSTRAINED BY DRAUGHT", "MOORED",
+        "AGROUND", "FISHING", "UNDER WAY SAILING", "HSC", "WIG",
+        "TOWING ASTERN", "PUSHING AHEAD", "RESERVED", "AIS-SART / MOB / EPIRB", "UNDEFINED"
+      ];
+      var NAV_STATUS_ALERT = { 2: true, 3: true, 6: true, 14: true };
+      function navStatusText(code) {
+        if (code == null) return null;
+        var n = parseInt(code, 10);
+        if (!isFinite(n) || n < 0 || n >= NAV_STATUS_TEXT.length) return null;
+        return NAV_STATUS_TEXT[n];
       }
 
       function setupRecenterBtn() {
@@ -2880,6 +3391,20 @@
           var isColl = panel.classList.toggle("collapsed");
           toggle.setAttribute("aria-expanded", isColl ? "false" : "true");
           try { localStorage.setItem("controls.collapsed", isColl ? "true" : "false"); } catch (e) {}
+        });
+      })();
+      // Legend toggle
+      (function () {
+        var legend = document.getElementById("legend");
+        var toggle = document.getElementById("legendToggle");
+        if (!legend || !toggle) return;
+        var open = false;
+        try { open = localStorage.getItem("legend.open") === "true"; } catch (e) {}
+        if (open) { legend.classList.add("open"); toggle.setAttribute("aria-expanded", "true"); }
+        toggle.addEventListener("click", function () {
+          var isOpen = legend.classList.toggle("open");
+          toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          try { localStorage.setItem("legend.open", isOpen ? "true" : "false"); } catch (e) {}
         });
       })();
       syncCoordInputs();

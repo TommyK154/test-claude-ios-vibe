@@ -31,20 +31,41 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 - **Fading cyan trail** shows accumulated position history; pre-populated
   from OpenSky's `tracks/all` endpoint on selection for the last several
   minutes of historical data, then extended live via a 5-second fast-poll.
+- **Sticky selection** — once you tap a plane, its trail, route line, and
+  icon stay drawn at their real geographic coordinates no matter where
+  you pan the map. Follow an incoming flight's path from its destination
+  all the way back to its origin without ever losing the trail.
 - **Planned route** from `api.adsbdb.com` draws a magenta dashed line
   origin → current → destination when route data is known.
 - **Emergency squawks** (7500 / 7600 / 7700) pulse red with a labeled
   HIJACK / RADIO FAIL / EMERGENCY banner.
 - **Military aircraft** from `adsb.fi/mil` render in warning-orange with
   a MIL banner in the selected card.
+- **Notable callsigns** (AIR FORCE ONE, NATO, SENTRY, REACH, NASA, etc.)
+  are flagged inline against a curated ~50-entry table. Anything not in
+  the curated list gets an operator lookup from `api.adsbdb.com`, so any
+  registered USAF / NAVY / NATO / NASA / DHS aircraft is still labeled.
+- **Anomaly chips** on the selected card call out supersonic speeds,
+  very-high-altitude cruise (FL550+), low-slow surveillance profiles,
+  and extreme vertical rates.
+- **Loading status row** on the card shows when track history, route
+  lookup, and photo are still fetching so you can tell "waiting" from
+  "not coming".
 
 ### Ships (AIS, optional)
 - Ship tracking streams from `aisstream.io` via WebSocket when you paste
   a free API key into the settings panel (top-right gear icon).
 - Amber hull-shaped markers oriented by course over ground.
-- Selected ship card decodes country of registration from the MMSI prefix
-  and shows SOG / COG / heading / destination / live accumulated trail.
+- Selected ship card decodes country of registration from the MMSI prefix,
+  decodes navigational status (at anchor, aground, AIS-SART, etc.), and
+  shows SOG / COG / heading / destination / live accumulated trail.
+- Abnormal or distress statuses (not under command, aground, AIS-SART)
+  raise a red alert banner.
 - `AIR / SEA / BOTH` segmented toggle filters which layer shows.
+- The settings panel surfaces aisstream errors directly (bad key, malformed
+  subscription, unverified account). After 30 seconds of "connected but
+  silent", the status downgrades to "NO TRAFFIC IN AREA" so silent failures
+  don't masquerade as a slow day.
 
 ## Technical
 
