@@ -1109,6 +1109,8 @@
         planes: [],
         ships: {},
         tracks: {},
+        shipTracks: {},
+        historicalFetched: {},
         routes: {},
         selectedHex: null,
         selectedMmsi: null,
@@ -1497,9 +1499,13 @@
           drawAptMarker(dst, route.destination.iata || route.destination.icao || "");
         }
 
-        if (sel.trackDeg != null && sel.gsKt != null && !sel.onGround) {
+        if (sel.trackDeg != null && sel.gsKt != null && !sel.onGround && sel.gsKt > 20) {
+          // 5-minute trend vector: where the aircraft will be in 5 min at
+          // current groundspeed and track. Length is speed-proportional;
+          // at 480 kt that's 40 NM, at 120 kt it's 10 NM.
           var curV = project({ lat: sel.lat, lon: sel.lon });
-          var distNm = sel.gsKt * (60 / 3600);
+          var TREND_MIN = 5;
+          var distNm = sel.gsKt * (TREND_MIN / 60);
           var lenRU = distNm * (100 / state.rangeNm);
           var rad = sel.trackDeg * Math.PI / 180;
           var dx = Math.sin(rad) * lenRU;
@@ -1514,6 +1520,62 @@
           v.setAttribute("stroke-linecap", "round");
           v.setAttribute("opacity", "0.9");
           vectorLayer.appendChild(v);
+          // Small tick at the 5-min endpoint
+          var tickLen = 1.5;
+          var perpX = Math.cos(rad) * tickLen;
+          var perpY = Math.sin(rad) * tickLen;
+          var endTick = document.createElementNS(svgns, "line");
+          endTick.setAttribute("x1", (curV.x + dx - perpX).toFixed(2));
+          endTick.setAttribute("y1", (curV.y + dy - perpY).toFixed(2));
+          endTick.setAttribute("x2", (curV.x + dx + perpX).toFixed(2));
+          endTick.setAttribute("y2", (curV.y + dy + perpY).toFixed(2));
+          endTick.setAttribute("stroke", "#6eff9a");
+          endTick.setAttribute("stroke-width", "1.2");
+          endTick.setAttribute("opacity", "0.9");
+          vectorLayer.appendChild(endTick);
+        }
+
+        // Ship overlays (trail + trend vector) when a ship is selected
+        if (state.selectedMmsi) {
+          var s = state.ships[state.selectedMmsi];
+          if (s && s.lat != null && s.lon != null) {
+            var strack = state.shipTracks[state.selectedMmsi];
+            if (strack && strack.length > 1) {
+              for (var k = 1; k < strack.length; k++) {
+                var sa = project({ lat: strack[k - 1].lat, lon: strack[k - 1].lon });
+                var sb = project({ lat: strack[k].lat, lon: strack[k].lon });
+                var sl = document.createElementNS(svgns, "line");
+                sl.setAttribute("x1", sa.x.toFixed(2));
+                sl.setAttribute("y1", sa.y.toFixed(2));
+                sl.setAttribute("x2", sb.x.toFixed(2));
+                sl.setAttribute("y2", sb.y.toFixed(2));
+                sl.setAttribute("stroke", "#ffb347");
+                sl.setAttribute("stroke-width", "1.2");
+                sl.setAttribute("stroke-linecap", "round");
+                sl.setAttribute("opacity", (0.2 + 0.8 * (k / strack.length)).toFixed(2));
+                trackLayer.appendChild(sl);
+              }
+            }
+            var sCog = s.cog != null ? s.cog : s.heading;
+            if (sCog != null && s.sog != null && s.sog > 0.5) {
+              var scur = project({ lat: s.lat, lon: s.lon });
+              var sDistNm = s.sog * (5 / 60);
+              var sLen = sDistNm * (100 / state.rangeNm);
+              var sRad = sCog * Math.PI / 180;
+              var sdx = Math.sin(sRad) * sLen;
+              var sdy = -Math.cos(sRad) * sLen;
+              var sv = document.createElementNS(svgns, "line");
+              sv.setAttribute("x1", scur.x.toFixed(2));
+              sv.setAttribute("y1", scur.y.toFixed(2));
+              sv.setAttribute("x2", (scur.x + sdx).toFixed(2));
+              sv.setAttribute("y2", (scur.y + sdy).toFixed(2));
+              sv.setAttribute("stroke", "#ffd89c");
+              sv.setAttribute("stroke-width", "1.1");
+              sv.setAttribute("stroke-linecap", "round");
+              sv.setAttribute("opacity", "0.9");
+              vectorLayer.appendChild(sv);
+            }
+          }
         }
       }
 
@@ -2065,6 +2127,40 @@
         if (!hex) return;
         state.selectedPollTimer = setInterval(function () { pollSelected(hex); }, 5000);
         pollSelected(hex); // kick off immediately
+        fetchHistoricalTrack(hex);
+      }
+
+      function fetchHistoricalTrack(hex) {
+        if (!hex) return;
+        var key = hex.toLowerCase();
+        if (state.historicalFetched[key]) return;
+        state.historicalFetched[key] = true;
+        var base = "https://opensky-network.org/api/tracks/all?icao24=" + key + "&time=0";
+        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
+        tryPhotoUrls(urls, 0).then(function (data) {
+          if (!data || !data.path || !data.path.length) return;
+          var existing = state.tracks[key] || [];
+          var seen = {};
+          for (var i = 0; i < existing.length; i++) seen[existing[i].t] = true;
+          var merged = existing.slice();
+          data.path.forEach(function (p) {
+            // [time, lat, lon, baro_alt, track, onground]
+            if (p[1] == null || p[2] == null) return;
+            var tMs = (p[0] || 0) * 1000;
+            if (seen[tMs]) return;
+            merged.push({
+              lat: p[1],
+              lon: p[2],
+              t: tMs,
+              alt: p[3] != null ? Math.round(p[3] * 3.28084) : null,
+              historical: true
+            });
+          });
+          merged.sort(function (a, b) { return a.t - b.t; });
+          if (merged.length > 500) merged = merged.slice(merged.length - 500);
+          state.tracks[key] = merged;
+          if (state.selectedHex === key) renderOverlays();
+        }).catch(function () { /* ignore */ });
       }
       function stopSelectedPoll() {
         if (state.selectedPollTimer) {
@@ -2594,6 +2690,14 @@
                 }
               }
               ship.lastUpdate = Date.now();
+              if (ship.lat != null && ship.lon != null) {
+                var trackArr = state.shipTracks[key] || (state.shipTracks[key] = []);
+                var prev = trackArr.length ? trackArr[trackArr.length - 1] : null;
+                if (!prev || Math.abs(prev.lat - ship.lat) > 0.0001 || Math.abs(prev.lon - ship.lon) > 0.0001) {
+                  trackArr.push({ lat: ship.lat, lon: ship.lon, t: ship.lastUpdate });
+                  if (trackArr.length > 200) trackArr.shift();
+                }
+              }
             } catch (err) {}
           });
           ws.addEventListener("close", function () {
@@ -2683,6 +2787,7 @@
       function selectShip(mmsi) {
         if (!mmsi) return;
         state.selectedMmsi = (state.selectedMmsi === mmsi) ? null : mmsi;
+        if (state.selectedHex) stopSelectedPoll();
         state.selectedHex = null;
         renderRadar(); renderShips(); renderList(); renderSelected(); renderOverlays();
       }
