@@ -242,6 +242,16 @@ data; the concentric rings are pure distance references (no clip-path).
 - Loiter detection is explicitly **deferred to a future PR** — needs
   threshold tuning against real holding patterns. See README "Future Work".
 
+## Diagnostics
+
+- **`COPY DIAGNOSTIC` button** in the settings panel snapshots session state
+  to the clipboard as JSON. Used for bug reports — pasted output includes
+  center, range, active fetch source / cadence, last fetch & error, plane &
+  ship counts, list filter/sort state, selected contact with sampled track
+  (first 10 + last 10 points) and AIS bbox + message counters. `state.aisKey`
+  is deliberately excluded. When a user reports a bug, ask them to paste the
+  diagnostic rather than describe symptoms — it's the ground truth.
+
 ## Known Issues / In-flight investigations
 
 - **AIS end-to-end**: PR #10 fixed the bbox-doesn't-update-on-center-change
@@ -251,6 +261,17 @@ data; the concentric rings are pure distance references (no clip-path).
   side — key tier, verification, or the subscription-frame format — not
   in our code. Log the diagnostic state from the settings panel and move
   to investigate the account rather than the client.
+- **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
+  `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
+  returns waypoints from *prior flights* of the same ICAO24 (same hex,
+  different flight, sometimes weeks earlier). Sorted merge by timestamp
+  can't distinguish them — they just appear as points in the track with
+  impossible-to-reach intervening geography. Mitigation (PR #11): the
+  trail renderer skips any segment whose implied groundspeed exceeds
+  800 kt. These impossible legs are almost always cross-flight artifacts.
+  Do NOT "clean up" by dropping this filter. Raw `state.tracks` is kept
+  intact so other future features (e.g. loiter scoring) can apply their
+  own plausibility rules.
 
 ## Roadmap
 

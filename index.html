@@ -998,6 +998,14 @@
         <div id="aisDiag" class="ais-diag" hidden></div>
         <p class="setting-help ais-diag-hint">If you see messages flowing but no ship markers, the subscribed bounding box may not match your map center — pan to a busy port (e.g. Rotterdam, Singapore, Houston) and wait ~30 s. aisstream's free tier only streams the bbox you subscribed to.</p>
       </div>
+      <div class="setting-block">
+        <label>Bug reporting</label>
+        <p class="setting-help">Copies a compact JSON snapshot of your current session (center, range, selected contact + sampled track, AIS counters) to the clipboard. Paste into a GitHub issue when reporting a bug so the exact state is captured. Your aisstream key is never included.</p>
+        <div class="setting-row">
+          <button type="button" id="copyDiagnosticBtn" class="btn-primary">COPY DIAGNOSTIC</button>
+        </div>
+        <div id="copyDiagStatus" class="ais-status"></div>
+      </div>
     </div>
     <div id="modeToggle" class="mode-toggle" hidden>
       <button type="button" class="mode-btn active" data-mode="both">BOTH</button>
@@ -1712,9 +1720,21 @@
 
         var track = state.tracks[state.selectedHex];
         if (track && track.length > 1) {
+          // Skip any segment whose implied groundspeed exceeds 800 kt (sanity
+          // cap above any civilian airliner) — OpenSky's tracks/all sometimes
+          // returns stale waypoints from earlier flights for the same hex,
+          // which otherwise draw as long lines zigzagging across the map.
           for (var j = 1; j < track.length; j++) {
-            var a = project({ lat: track[j - 1].lat, lon: track[j - 1].lon });
-            var b = project({ lat: track[j].lat, lon: track[j].lon });
+            var pa = track[j - 1];
+            var pb = track[j];
+            if (pa.lat == null || pa.lon == null || pb.lat == null || pb.lon == null) continue;
+            var dtSec = Math.max(1, ((pb.t || 0) - (pa.t || 0)) / 1000);
+            var segNm = haversineNm(pa.lat, pa.lon, pb.lat, pb.lon);
+            var impliedKt = (segNm / dtSec) * 3600;
+            if (impliedKt > 800) continue;
+            var a = project({ lat: pa.lat, lon: pa.lon });
+            var b = project({ lat: pb.lat, lon: pb.lon });
+            if (!isFinite(a.x) || !isFinite(a.y) || !isFinite(b.x) || !isFinite(b.y)) continue;
             var line = document.createElementNS(svgns, "line");
             line.setAttribute("x1", a.x.toFixed(2));
             line.setAttribute("y1", a.y.toFixed(2));
@@ -2134,9 +2154,56 @@
         planes.forEach(function (p) {
           var pt = project(p);
           if (!isFinite(pt.x) || !isFinite(pt.y)) return;
-          // No culling — contacts render across the entire map square.
-          // The concentric circles are purely distance references now.
-          if (Math.abs(pt.x) > 120 || Math.abs(pt.y) > 120) return;
+          // Off-box: the selected plane gets an edge chevron so the user
+          // never loses track of it when they pan past the render box.
+          // All other contacts still cull — otherwise the edges fill up
+          // with markers for dozens of planes a user isn't watching.
+          if (Math.abs(pt.x) > 120 || Math.abs(pt.y) > 120) {
+            if (!(p.hex && p.hex === state.selectedHex)) return;
+            var edgeScale = 120 / Math.max(Math.abs(pt.x), Math.abs(pt.y));
+            var ex = pt.x * edgeScale;
+            var ey = pt.y * edgeScale;
+            var compassDeg = (Math.atan2(pt.x, -pt.y) * 180 / Math.PI + 360) % 360;
+            var cards = ["N","NE","E","SE","S","SW","W","NW"];
+            var card = cards[Math.round(compassDeg / 45) % 8];
+            var distStr = p.distNm != null ? p.distNm.toFixed(0) + " NM " + card : card;
+            var edgeLabel = (p.callsign || (p.hex || "").toUpperCase()) + " · " + distStr;
+            var eg = document.createElementNS(svgns, "g");
+            eg.setAttribute("data-hex", p.hex);
+            eg.setAttribute("transform", "translate(" + ex.toFixed(2) + "," + ey.toFixed(2) + ")");
+            eg.style.cursor = "pointer";
+            var eHit = document.createElementNS(svgns, "circle");
+            eHit.setAttribute("cx", "0"); eHit.setAttribute("cy", "0");
+            eHit.setAttribute("r", "8"); eHit.setAttribute("fill", "transparent");
+            eg.appendChild(eHit);
+            var rotDeg = Math.atan2(pt.x, -pt.y) * 180 / Math.PI;
+            var chev = document.createElementNS(svgns, "polygon");
+            chev.setAttribute("points", "0,-4 3,2 -3,2");
+            chev.setAttribute("fill", "var(--plane-selected)");
+            chev.setAttribute("stroke", "#fff");
+            chev.setAttribute("stroke-width", "0.6");
+            chev.setAttribute("transform", "rotate(" + rotDeg.toFixed(1) + ")");
+            eg.appendChild(chev);
+            var lx = 0, ly = 10, tAnchor = "middle";
+            if (ex >= 119) { lx = -5; ly = 1; tAnchor = "end"; }
+            else if (ex <= -119) { lx = 5; ly = 1; tAnchor = "start"; }
+            else if (ey <= -119) { ly = 10; tAnchor = "middle"; }
+            else { ly = -5; tAnchor = "middle"; }
+            var eText = document.createElementNS(svgns, "text");
+            eText.setAttribute("x", lx.toString());
+            eText.setAttribute("y", ly.toString());
+            eText.setAttribute("fill", "var(--plane-selected)");
+            eText.setAttribute("font-size", "5");
+            eText.setAttribute("font-family", "ui-monospace, SFMono-Regular, Menlo, monospace");
+            eText.setAttribute("text-anchor", tAnchor);
+            eText.setAttribute("paint-order", "stroke");
+            eText.setAttribute("stroke", "rgba(7,12,21,0.9)");
+            eText.setAttribute("stroke-width", "0.8");
+            eText.textContent = edgeLabel;
+            eg.appendChild(eText);
+            planeLayer.appendChild(eg);
+            return;
+          }
 
           var g = document.createElementNS(svgns, "g");
           var heading = p.trackDeg == null ? 0 : p.trackDeg;
@@ -2303,7 +2370,7 @@
         if (!controls) return;
         var planeFilters = [
           { k: "all", label: "ALL" },
-          { k: "air", label: "AIR" },
+          { k: "air", label: "FLYING" },
           { k: "ground", label: "GROUND" },
           { k: "mil", label: "MIL" },
           { k: "notable", label: "NOTABLE" },
@@ -2328,7 +2395,7 @@
         ];
         var parts = [];
         if (state.showAir) {
-          parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">AIR</span>' +
+          parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">FILTER</span>' +
             planeFilters.map(function (f) {
               var active = state.listFilter === f.k ? " active" : "";
               return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
@@ -3499,6 +3566,8 @@
           panel.hidden = !panel.hidden;
           if (!panel.hidden) renderAisDiag();
         });
+        var diagBtn = document.getElementById("copyDiagnosticBtn");
+        if (diagBtn) diagBtn.addEventListener("click", copyDiagnostic);
         save.addEventListener("click", function () {
           var v = (input.value || "").trim();
           if (!v) return;
@@ -3559,6 +3628,74 @@
         if (!el) return;
         el.textContent = text;
         el.className = "ais-status" + (cls ? " " + cls : "");
+      }
+
+      // Builds a compact JSON snapshot of live session state for bug reports.
+      // Samples the selected contact's track (first 10 + last 10 points) so the
+      // output stays under ~8 KB even when state.tracks has hit its 500-point
+      // cap. state.aisKey is deliberately excluded — keep it that way.
+      function copyDiagnostic() {
+        var statusEl = document.getElementById("copyDiagStatus");
+        function setStatus(text, cls) {
+          if (!statusEl) return;
+          statusEl.textContent = text;
+          statusEl.className = "ais-status" + (cls ? " " + cls : "");
+        }
+        var selHex = state.selectedHex;
+        var tr = selHex ? (state.tracks[selHex] || []) : [];
+        var trackSample = tr.length > 20
+          ? tr.slice(0, 10).concat(tr.slice(-10))
+          : tr.slice();
+        var selMmsi = state.selectedMmsi;
+        var st = selMmsi ? (state.shipTracks && state.shipTracks[selMmsi]) || [] : [];
+        var shipTrackSample = st.length > 20
+          ? st.slice(0, 10).concat(st.slice(-10))
+          : st.slice();
+        var diag = {
+          ts: new Date().toISOString(),
+          ua: navigator.userAgent,
+          vp: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
+          center: state.center,
+          rangeNm: state.rangeNm,
+          activeSource: state.activeSource,
+          refreshMs: (typeof currentRefreshMs === "function") ? currentRefreshMs() : null,
+          lastFetch: state.lastFetch,
+          lastError: state.lastError,
+          planeCount: (state.planes || []).length,
+          shipCount: state.ships ? Object.keys(state.ships).length : 0,
+          showAir: state.showAir,
+          showSea: state.showSea,
+          listFilter: state.listFilter,
+          listSort: state.listSort,
+          selectedHex: selHex,
+          selectedMmsi: selMmsi,
+          selectedPlaneData: state.selectedPlaneData,
+          selectedTrackSample: trackSample,
+          selectedTrackTotal: tr.length,
+          selectedShipTrackSample: shipTrackSample,
+          selectedShipTrackTotal: st.length,
+          ais: {
+            keyPresent: !!state.aisKey,
+            connected: !!(state.aisSocket && state.aisSocket.readyState === 1),
+            bbox: state.aisBbox,
+            msgCount: state.aisMessageCount,
+            firstMsgAt: state.aisFirstMsgAt,
+            msgTypes: state.aisMsgTypes,
+            lastMsgType: state.aisLastMsgType
+          }
+        };
+        var json;
+        try { json = JSON.stringify(diag, null, 2); }
+        catch (e) { setStatus("SERIALIZE FAILED · " + e.message, "warn"); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json).then(function () {
+            setStatus("DIAGNOSTIC COPIED · " + json.length + " chars · paste into a GitHub issue", "ok");
+          }).catch(function (e) {
+            setStatus("COPY FAILED · " + (e && e.message ? e.message : "clipboard denied"), "warn");
+          });
+        } else {
+          setStatus("CLIPBOARD API UNAVAILABLE · update browser or paste JSON manually", "warn");
+        }
       }
 
       // Populates the diagnostic block under the ais status line. Surfaces
@@ -3910,11 +4047,13 @@
         if (obj.onGround) return false;
         if (spd < 0.3) return false;
         if (obj.baseAt == null) {
+          if (!isFinite(obj.lat) || !isFinite(obj.lon)) return false;
           obj.baseAt = Date.now();
           obj.baseLat = obj.lat;
           obj.baseLon = obj.lon;
           return false;
         }
+        if (!isFinite(obj.baseLat) || !isFinite(obj.baseLon)) return false;
         var dt = (Date.now() - obj.baseAt) / 1000;
         if (dt <= 0 || dt > (baseOlderThanMs / 1000)) return false;
         var nm = spd * (dt / 3600);
@@ -3922,8 +4061,11 @@
         var dLat = (nm * Math.cos(rad)) / 60;
         var dLon = (nm * Math.sin(rad)) /
                    (60 * Math.max(0.01, Math.cos(obj.baseLat * Math.PI / 180)));
-        obj.lat = obj.baseLat + dLat;
-        obj.lon = obj.baseLon + dLon;
+        var nextLat = obj.baseLat + dLat;
+        var nextLon = obj.baseLon + dLon;
+        if (!isFinite(nextLat) || !isFinite(nextLon)) return false;
+        obj.lat = nextLat;
+        obj.lon = nextLon;
         return true;
       }
       function deadReckonTick() {

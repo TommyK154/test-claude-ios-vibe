@@ -89,7 +89,7 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   markers appear, the bbox is most likely mismatched with the current map
   center — pan to a busy port (Rotterdam, Singapore, Houston) and wait.
 
-## Status (as of PR #10)
+## Status (as of PR #11)
 
 - Gesture system (pan, pinch, pinch→pan handoff, tap-to-select,
   tap-to-deselect) is stable. PR #10 added stale-pointer pruning so the
@@ -103,7 +103,22 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 - AIS subscription now re-subscribes on every map-center change. The
   diagnostic strip in settings reflects the live bbox and per-subscription
   message counts.
-- Contact-list filter + sort (plane and ship) ships in PR #10.
+- Contact-list filter + sort (plane and ship) ships in PR #10. PR #11
+  renames the plane-filter row label to `FILTER` and the airborne chip
+  to `FLYING` to resolve a collision with the top-level `AIR` mode toggle.
+- PR #11: trail render skips any segment implying >800 kt groundspeed,
+  cleaning up OpenSky cross-flight waypoint artifacts that drew as
+  zigzag tendrils across the map.
+- PR #11: dead-reckoning NaN guards stop a single bad fetch from
+  NaN-poisoning the display coordinate and silently culling the selected
+  plane marker.
+- PR #11: off-box selected plane renders as an edge chevron with
+  callsign + bearing/distance so the user never loses their selection
+  when panning away.
+- PR #11: `COPY DIAGNOSTIC` button in the settings panel writes a
+  compact JSON snapshot of session state (center, range, active source,
+  selected contact + sampled track, AIS counters) to the clipboard for
+  bug reports. `aisstream.io` API key is never included.
 
 ## Known Issues (open)
 
