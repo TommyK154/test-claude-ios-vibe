@@ -1,25 +1,64 @@
-# Flight Tracker
+# Air & Sea Tactical Radar
 
-A tiny, dependency-free ADS-B flight radar that runs entirely in the browser.
+A single-file, dependency-free browser radar for live ADS-B air traffic and
+(optionally) AIS vessel traffic, rendered over real satellite imagery.
 
 Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 
 ## Features
 
-- Pick a preset city, use device geolocation, or enter any lat/lon
-- Adjustable range from 10 NM to 250 NM
-- Radar-style SVG visualization with range rings and a compass rose
-- Aircraft plotted by bearing/distance and oriented by true heading
-- Tap any aircraft for callsign, altitude, speed, heading, distance, squawk, hex
-- Auto-refresh every 30 seconds (pauses when the tab is hidden)
-- Fetches from `opendata.adsb.fi` with `api.adsb.lol` and OpenSky Network as fallbacks
+### Map & interaction
+- Real-world ESRI satellite tiles with a labels overlay, rendered at
+  retina-oversampled zoom for crisp imagery on mobile.
+- Pan the radar by dragging; pinch on the map with two fingers to change
+  range (5 – 500 NM, logarithmic slider below the map mirrors the gesture).
+- Pre-loaded tile buffer (~40 % beyond the active circle) so short pans
+  don't hit empty space.
+- Vignette between the radar circle and the square corners marks where
+  data coverage extends. Contacts render across the full square, not just
+  the circle, so tracks don't get cut off at the edge.
+- Auto-request geolocation on first load; collapsible location panel with
+  airport search (IATA / ICAO / city across ~130 bundled airports).
+
+### Aircraft (ADS-B)
+- Fetches from `opendata.adsb.fi` with `api.adsb.lol`, OpenSky Network,
+  and three CORS-proxied fallbacks for resilience behind privacy layers.
+- Auto-refresh every 30 seconds, contacts sorted by distance.
+- Tap any aircraft to pin details (callsign, altitude, speed, heading,
+  distance, squawk, hex, photo via planespotters.net).
+- **5-minute trend vector** (G1000-style) projects speed-scaled forward
+  position for the selected plane.
+- **Fading cyan trail** shows accumulated position history; pre-populated
+  from OpenSky's `tracks/all` endpoint on selection for the last several
+  minutes of historical data, then extended live via a 5-second fast-poll.
+- **Planned route** from `api.adsbdb.com` draws a magenta dashed line
+  origin → current → destination when route data is known.
+- **Emergency squawks** (7500 / 7600 / 7700) pulse red with a labeled
+  HIJACK / RADIO FAIL / EMERGENCY banner.
+- **Military aircraft** from `adsb.fi/mil` render in warning-orange with
+  a MIL banner in the selected card.
+
+### Ships (AIS, optional)
+- Ship tracking streams from `aisstream.io` via WebSocket when you paste
+  a free API key into the settings panel (top-right gear icon).
+- Amber hull-shaped markers oriented by course over ground.
+- Selected ship card decodes country of registration from the MMSI prefix
+  and shows SOG / COG / heading / destination / live accumulated trail.
+- `AIR / SEA / BOTH` segmented toggle filters which layer shows.
 
 ## Technical
 
-- Single `index.html` file with embedded CSS and JavaScript
-- Zero dependencies, no build step, no CDN links
-- Works opened directly from the filesystem or served from GitHub Pages
-- Mobile-first layout, 44px tap targets, safe-area aware for iPhone
+- Single `index.html` file with embedded CSS and JavaScript.
+- Zero build-time dependencies, no CDN script tags.
+- Works opened directly from the filesystem or served from GitHub Pages.
+- Mobile-first layout, 44 px tap targets, safe-area aware for iPhone.
+- Runtime data sources:
+  - `opendata.adsb.fi`, `api.adsb.lol`, `opensky-network.org` — live ADS-B
+  - `opensky-network.org/api/tracks` — historical aircraft path
+  - `server.arcgisonline.com` — ESRI satellite + labels tile services
+  - `api.adsbdb.com` — flight route (origin/destination) on tap
+  - `api.planespotters.net` — aircraft photo on tap
+  - `aisstream.io` — maritime AIS (user-supplied key, WebSocket)
 
 ## Run it
 
@@ -33,7 +72,7 @@ free but requires your own API key:
 
 1. Sign up at `https://aisstream.io/apikeys` (~30 seconds).
 2. Copy the generated key.
-3. On the radar, tap the **⚙** button in the header.
+3. On the radar, tap the **settings** (sliders) icon in the header.
 4. Paste your key into the input, tap **SAVE**.
 
 The key is stored only in your browser's `localStorage` (under
