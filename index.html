@@ -577,6 +577,36 @@
         {iata:"SJC",icao:"KSJC",name:"Mineta San Jose",city:"San Jose",lat:37.3626,lon:-121.9290},
         {iata:"SMF",icao:"KSMF",name:"Sacramento Intl",city:"Sacramento",lat:38.6954,lon:-121.5908},
         {iata:"SNA",icao:"KSNA",name:"John Wayne",city:"Orange County",lat:33.6757,lon:-117.8682},
+        {iata:"SZP",icao:"KSZP",name:"Santa Paula",city:"Santa Paula",lat:34.3472,lon:-119.0606},
+        {iata:"VNY",icao:"KVNY",name:"Van Nuys",city:"Los Angeles",lat:34.2098,lon:-118.4899},
+        {iata:"BUR",icao:"KBUR",name:"Hollywood Burbank",city:"Burbank",lat:34.2007,lon:-118.3587},
+        {iata:"LGB",icao:"KLGB",name:"Long Beach",city:"Long Beach",lat:33.8177,lon:-118.1516},
+        {iata:"SBA",icao:"KSBA",name:"Santa Barbara Muni",city:"Santa Barbara",lat:34.4262,lon:-119.8403},
+        {iata:"MRY",icao:"KMRY",name:"Monterey Regional",city:"Monterey",lat:36.5870,lon:-121.8429},
+        {iata:"SMO",icao:"KSMO",name:"Santa Monica Muni",city:"Santa Monica",lat:34.0158,lon:-118.4513},
+        {iata:"PAO",icao:"KPAO",name:"Palo Alto",city:"Palo Alto",lat:37.4611,lon:-122.1150},
+        {iata:"SQL",icao:"KSQL",name:"San Carlos",city:"San Carlos",lat:37.5119,lon:-122.2495},
+        {iata:"HWD",icao:"KHWD",name:"Hayward Executive",city:"Hayward",lat:37.6592,lon:-122.1222},
+        {iata:"LVK",icao:"KLVK",name:"Livermore Muni",city:"Livermore",lat:37.6934,lon:-121.8203},
+        {iata:"RNO",icao:"KRNO",name:"Reno-Tahoe",city:"Reno",lat:39.4991,lon:-119.7681},
+        {iata:"TRK",icao:"KTRK",name:"Truckee Tahoe",city:"Truckee",lat:39.3200,lon:-120.1397},
+        {iata:"SBP",icao:"KSBP",name:"San Luis Obispo",city:"San Luis Obispo",lat:35.2368,lon:-120.6420},
+        {iata:"FAT",icao:"KFAT",name:"Fresno Yosemite",city:"Fresno",lat:36.7762,lon:-119.7181},
+        {iata:"BFL",icao:"KBFL",name:"Meadows Field",city:"Bakersfield",lat:35.4336,lon:-119.0568},
+        {iata:"PSP",icao:"KPSP",name:"Palm Springs Intl",city:"Palm Springs",lat:33.8297,lon:-116.5067},
+        {iata:"ONT",icao:"KONT",name:"Ontario Intl",city:"Ontario",lat:34.0560,lon:-117.6012},
+        {iata:"SEE",icao:"KSEE",name:"Gillespie Field",city:"El Cajon",lat:32.8262,lon:-116.9724},
+        {iata:"CRQ",icao:"KCRQ",name:"McClellan-Palomar",city:"Carlsbad",lat:33.1283,lon:-117.2803},
+        {iata:"TEB",icao:"KTEB",name:"Teterboro",city:"Teterboro",lat:40.8501,lon:-74.0606},
+        {iata:"HPN",icao:"KHPN",name:"Westchester County",city:"White Plains",lat:41.0670,lon:-73.7076},
+        {iata:"BDL",icao:"KBDL",name:"Bradley Intl",city:"Hartford",lat:41.9389,lon:-72.6832},
+        {iata:"PVD",icao:"KPVD",name:"T.F. Green",city:"Providence",lat:41.7240,lon:-71.4283},
+        {iata:"BUF",icao:"KBUF",name:"Buffalo Niagara",city:"Buffalo",lat:42.9405,lon:-78.7322},
+        {iata:"ROC",icao:"KROC",name:"Greater Rochester",city:"Rochester",lat:43.1189,lon:-77.6724},
+        {iata:"ALB",icao:"KALB",name:"Albany Intl",city:"Albany",lat:42.7483,lon:-73.8017},
+        {iata:"BGR",icao:"KBGR",name:"Bangor Intl",city:"Bangor",lat:44.8074,lon:-68.8281},
+        {iata:"PWM",icao:"KPWM",name:"Portland Jetport",city:"Portland ME",lat:43.6462,lon:-70.3093},
+        {iata:"MHT",icao:"KMHT",name:"Manchester-Boston",city:"Manchester NH",lat:42.9326,lon:-71.4356},
         {iata:"LHR",icao:"EGLL",name:"Heathrow",city:"London",lat:51.4700,lon:-0.4543},
         {iata:"LGW",icao:"EGKK",name:"Gatwick",city:"London",lat:51.1537,lon:-0.1821},
         {iata:"STN",icao:"EGSS",name:"Stansted",city:"London",lat:51.8860,lon:0.2389},
@@ -653,31 +683,37 @@
         {iata:"LIM",icao:"SPJC",name:"Jorge Chávez",city:"Lima",lat:-12.0219,lon:-77.1143}
       ];
 
+      function adsbFiDirect(lat, lon, nm) {
+        return "https://opendata.adsb.fi/api/v2/point/" + lat + "/" + lon + "/" + nm;
+      }
+      function adsbLolDirect(lat, lon, nm) {
+        return "https://api.adsb.lol/v2/point/" + lat + "/" + lon + "/" + nm;
+      }
+      function openSkyDirect(lat, lon, nm) {
+        var latN = parseFloat(lat), lonN = parseFloat(lon);
+        var dLat = nm / 60;
+        var dLon = nm / (60 * Math.max(0.01, Math.cos(latN * Math.PI / 180)));
+        return "https://opensky-network.org/api/states/all" +
+          "?lamin=" + (latN - dLat).toFixed(4) +
+          "&lomin=" + (lonN - dLon).toFixed(4) +
+          "&lamax=" + (latN + dLat).toFixed(4) +
+          "&lomax=" + (lonN + dLon).toFixed(4);
+      }
+      function viaCorsProxy(innerUrl) {
+        return "https://corsproxy.io/?url=" + encodeURIComponent(innerUrl);
+      }
+      function viaAllOrigins(innerUrl) {
+        return "https://api.allorigins.win/raw?url=" + encodeURIComponent(innerUrl);
+      }
+
       var API_SOURCES = [
-        {
-          name: "adsb.fi",
-          url: function (lat, lon, nm) { return "https://opendata.adsb.fi/api/v2/point/" + lat + "/" + lon + "/" + nm; },
-          parse: normalizeReadsb
-        },
-        {
-          name: "adsb.lol",
-          url: function (lat, lon, nm) { return "https://api.adsb.lol/v2/point/" + lat + "/" + lon + "/" + nm; },
-          parse: normalizeReadsb
-        },
-        {
-          name: "OpenSky",
-          url: function (lat, lon, nm) {
-            var latN = parseFloat(lat), lonN = parseFloat(lon);
-            var dLat = nm / 60;
-            var dLon = nm / (60 * Math.max(0.01, Math.cos(latN * Math.PI / 180)));
-            return "https://opensky-network.org/api/states/all" +
-              "?lamin=" + (latN - dLat).toFixed(4) +
-              "&lomin=" + (lonN - dLon).toFixed(4) +
-              "&lamax=" + (latN + dLat).toFixed(4) +
-              "&lomax=" + (lonN + dLon).toFixed(4);
-          },
-          parse: normalizeOpenSky
-        }
+        { name: "adsb.fi",             url: function (la, lo, nm) { return adsbFiDirect(la, lo, nm); },               parse: normalizeReadsb },
+        { name: "adsb.lol",            url: function (la, lo, nm) { return adsbLolDirect(la, lo, nm); },              parse: normalizeReadsb },
+        { name: "OpenSky",             url: function (la, lo, nm) { return openSkyDirect(la, lo, nm); },              parse: normalizeOpenSky },
+        { name: "adsb.fi (proxy)",     url: function (la, lo, nm) { return viaCorsProxy(adsbFiDirect(la, lo, nm)); }, parse: normalizeReadsb },
+        { name: "adsb.lol (proxy)",    url: function (la, lo, nm) { return viaCorsProxy(adsbLolDirect(la, lo, nm)); },parse: normalizeReadsb },
+        { name: "OpenSky (proxy)",     url: function (la, lo, nm) { return viaCorsProxy(openSkyDirect(la, lo, nm)); },parse: normalizeOpenSky },
+        { name: "adsb.fi (allorigins)",url: function (la, lo, nm) { return viaAllOrigins(adsbFiDirect(la, lo, nm)); },parse: normalizeReadsb }
       ];
 
       var REFRESH_MS = 30000;
@@ -1207,7 +1243,13 @@
         }
 
         function render(matches) {
-          if (!matches.length) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
+          if (!matches.length) {
+            var q = input.value.trim();
+            if (!q) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
+            dropdown.hidden = false;
+            dropdown.innerHTML = '<div class="apt-item" style="cursor:default"><span class="apt-code" style="color:var(--muted)">—</span><span class="apt-name" style="color:var(--muted)">No match in built-in list · try lat/lon below</span></div>';
+            return;
+          }
           dropdown.hidden = false;
           var html = "";
           for (var i = 0; i < matches.length; i++) {
