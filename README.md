@@ -55,6 +55,19 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   the empty radar background, or tap the same plane again. After deselect
   the plane marker stays on the map for a 30 s grace period so it doesn't
   pop off the instant you dismiss the overlay.
+- **Dead-reckoning motion** — every plane marker advances every second
+  using its own reported heading and ground speed, so all contacts on
+  the map move smoothly between fetches, not just the selected one.
+  Fresh fetches override the estimate; trails remain ground-truth.
+- **10-second bulk refresh** on direct APIs (adsb.fi, adsb.lol); falls
+  back to 30 s automatically when streaming through CORS proxies or
+  OpenSky to respect tighter rate limits. Current rate is shown in the
+  status bar.
+- **Contact-list filter & sort.** The list under the radar has filter
+  chips (ALL · AIR · GROUND · MIL · NOTABLE · ⚠) and sort chips
+  (DIST · ALT · SPD · A–Z, each with an asc/desc toggle). Ships get
+  their own filter row (ALL · UNDERWAY · ANCHORED · DISTRESS) when an
+  AIS key is set. Choices persist across reloads.
 
 ### Ships (AIS, optional)
 - Ship tracking streams from `aisstream.io` via WebSocket when you paste
@@ -76,23 +89,28 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   markers appear, the bbox is most likely mismatched with the current map
   center — pan to a busy port (Rotterdam, Singapore, Houston) and wait.
 
-## Status (as of PR #9)
+## Status (as of PR #10)
 
-- Gesture system (pan, pinch, tap-to-select, tap-to-deselect) is considered
-  stable after the PR #9 `commitPan` stale-pointer fix.
-- Sticky selection, loading status row, SIGINT anomaly chips, notable-callsign
-  banners (curated + external operator lookup), MMSI nav-status decode are
-  all shipping.
-- AIS end-to-end (user receiving ship markers on map) has not been
-  end-to-end verified with user's key; the new diagnostic strip was added
-  explicitly to make the next debugging pass faster.
+- Gesture system (pan, pinch, pinch→pan handoff, tap-to-select,
+  tap-to-deselect) is stable. PR #10 added stale-pointer pruning so the
+  state machine recovers from iOS Safari occasionally eating a
+  `pointerup` during multi-touch.
+- Sticky selection, 30 s deselect grace buffer, loading status row,
+  SIGINT anomaly chips, notable-callsign banners (curated + external
+  operator lookup), MMSI nav-status decode all shipping.
+- Dead-reckoning motion ticker + 10 s fast-mode bulk refresh ship in
+  PR #10 — global contact motion between fetches, not just selected.
+- AIS subscription now re-subscribes on every map-center change. The
+  diagnostic strip in settings reflects the live bbox and per-subscription
+  message counts.
+- Contact-list filter + sort (plane and ship) ships in PR #10.
 
 ## Known Issues (open)
 
-- **AIS ship markers not appearing** despite a working key — under
-  investigation. Use the diagnostic strip in settings to narrow it down:
-  if `msgs 0`, it's a subscription / key / tier problem; if `msgs > 0` but
-  `ships 0`, the parse/render path is dropping frames.
+- AIS end-to-end: if a particular busy port still shows `msgs 0` in the
+  diagnostic after PR #10, the subscription-shape fix isn't the root
+  cause and we need to dig into the aisstream account / tier / key
+  verification. Log the diagnostic state and move to that investigation.
 - Loiter detection is not yet implemented (roadmap item).
 
 ## Future Work
@@ -129,6 +147,13 @@ Ordered roughly by likely ship sequence.
 - **Momentum on pan release** — decay velocity for an Apple-Maps feel
   instead of the current hard stop.
 - **Double-tap to zoom in** — Apple-Maps convention.
+
+### Performance / data
+- **Authenticated OpenSky credentials** (optional) — would let us
+  sustain sub-10 s polling on that source without blowing the anonymous
+  credit budget.
+- **Pause polling when the tab is hidden** — save data when the page is
+  in a background tab.
 
 ## Technical
 

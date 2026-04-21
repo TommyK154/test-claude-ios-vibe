@@ -88,16 +88,27 @@ both. When editing:
    (`releasePointerCapture`). A captured pointer that is never released
    suppresses subsequent `click` events on plane/ship markers, breaking
    tap-to-select.
-4. **`pointercancel` always `resetAll`s**. iOS delivers it when the
-   system takes over a gesture (multi-app switcher, Safari edge-swipe).
-5. **Recover on stuck pointerdown**: if a fresh pointerdown arrives
-   while `mode !== "idle"` and `pointerCount() === 0`, `resetAll()`
-   before starting the new gesture. Defends against dropped
-   pointerup/pointercancel events.
+4. **`pointercancel` always `resetAll`s AND calls `e.preventDefault()`**.
+   iOS delivers it when the system takes over a gesture (multi-app
+   switcher, Safari edge-swipe). Missing preventDefault lets Safari
+   hold the gesture instead of returning control to us.
+5. **Recover on stuck pointerdown**: on every pointerdown, first
+   `sweepStalePointers(1000)` (prune any pointer whose `.t` timestamp
+   is older than 1 s — a live finger emits moves). If the sweep empties
+   pointers but `mode !== "idle"`, `resetAll()` before starting the
+   new gesture. Defends against dropped pointerup/pointercancel events.
 6. **Pinch → pan handoff**: when one finger lifts during pinch,
    `commitPinch()` first, then `enterPan` with the remaining pointer's
    CURRENT `{x, y}` — this gives the next pointermove dx=0 instead of
    the accumulated delta from during the pinch.
+7. **Every stored pointer carries a `.t` timestamp** updated on every
+   pointermove. In `pointermove` during `mode === "pinch"`, if the
+   *other* stored pointer's `.t` is older than 400 ms, iOS almost
+   certainly ate its `pointerup` — synthesize the lift, `commitPinch()`,
+   then `enterPan` for the remaining finger. Without this, a single
+   dropped pointerup locks the gesture in pinch mode forever and the
+   user's "continues to zoom when I try to pan, can't tap planes"
+   bug regresses.
 
 ### Render ordering
 
@@ -113,6 +124,83 @@ both. When editing:
 `state.selectedPlaneData` first (authoritative), and only falls back to
 `state.planes` as a secondary defence. Trail / route / trend vector are
 never drawn for `lastSelectedPlane` — deselect strips overlays by design.
+
+### Motion ticker (dead reckoning)
+
+`deadReckonTick` runs at 1 Hz and advances every plane / ship's *display*
+lat/lon forward using its own `gsKt`+`trackDeg` (planes) or `sog`+`cog`
+(ships). This is what makes the radar feel alive at every zoom level
+even though real data only arrives every 10–30 s.
+
+Invariants:
+
+- **`baseLat` / `baseLon` / `baseAt`** are the last ground-truth
+  position + timestamp. Reset by: the bulk fetch handler (for every
+  plane in the fresh `state.planes`), `pollSelected` (for the
+  in-bbox entry + `state.selectedPlaneData`), and the AIS message
+  handler (for each ship's new lat/lon).
+- Dead-reckoned positions are **display only**. `accumulateTracks()`
+  uses raw-fetched lat/lon so trails remain ground truth.
+- Guardrails: skip if `gsKt == null`, `trackDeg == null`, `onGround`
+  true, or speed < 0.3 kt. Cap extrapolation at 120 s (planes) /
+  300 s (ships) — older bases mean stale data we shouldn't keep
+  blindly advancing.
+- Fresh fetches cause a sub-NM visible jog as the estimate snaps to
+  reality; on a 50 NM radar that's imperceptible.
+
+### Refresh cadence
+
+Bulk-fetch interval is source-aware via `currentRefreshMs()`:
+
+- `REFRESH_MS_FAST = 10000` — when `state.activeSource` is `adsb.fi`
+  or `adsb.lol`.
+- `REFRESH_MS_FALLBACK = 30000` — when the active source matches
+  `/proxy|opensky/i` (tighter rate limits, anonymous OpenSky credit
+  budget).
+
+`state.activeSource` is set to `result.source.name` at the end of the
+fetch success handler. The status bar displays the current rate
+("10s" or "30s") so the user can see at a glance which mode is active.
+
+Selected-plane fast-poll stays at 5 s, now only 2× bulk (vs. 6× before).
+
+### AIS subscription
+
+aisstream free tier only streams the subscribed bounding box. The bbox
+must track the map center, otherwise you listen to empty water far from
+where you're looking.
+
+- **`onCenterChanged()` at `index.html:1465` is the choke point**.
+  Every code path that mutates `state.center` (preset buttons,
+  airport search, custom lat/lon input, geolocation, re-center
+  button) MUST route through it. `onCenterChanged` calls
+  `resubscribeAis()` at the end.
+- **`resubscribeAis()` updates `state.aisBbox`** to the newly-computed
+  bbox AND resets per-subscription counters (`aisMessageCount`,
+  `aisFirstMsgAt`, `aisMsgTypes`, `aisLastMsgType`, `aisLoggedSamples`,
+  `aisNoTrafficTimer`). Without this, the settings-panel diagnostic
+  strip would keep showing the stale bbox and count.
+- aisstream accepts a mid-stream subscription frame on the same
+  WebSocket — no need to close/reopen. If that ever stops working,
+  fall back to `disconnectAisStream()` + `connectAisStream()`.
+
+### Contact-list filter & sort
+
+`state.listFilter` / `state.listSort` / `state.listSortDesc` (planes)
+and `state.shipFilter` / `state.shipSort` / `state.shipSortDesc`
+(ships) drive the chip UI above the list. All six are persisted to
+`localStorage` under `list.*` keys.
+
+- Filter predicates ALWAYS pass the currently-selected contact,
+  regardless of the active filter, so the card↔list link never breaks.
+- Chip UI is in the `#listControls` element, populated by
+  `renderListControls()` and re-rendered whenever state changes via
+  `setListOption(key, value)`.
+- The ship chip row is only emitted when `state.showSea && state.aisKey`,
+  so single-layer (air-only) users aren't cluttered with ship controls.
+- Tapping the same sort chip twice toggles asc/desc. Numeric sorts
+  (ALT, SPD) default to desc on first tap; text / distance sorts
+  default to asc.
 
 ### Deselection
 
@@ -156,12 +244,13 @@ data; the concentric rings are pure distance references (no clip-path).
 
 ## Known Issues / In-flight investigations
 
-- **AIS end-to-end unverified**: user reports ships never appear despite a
-  connected key. The `renderAisDiag` settings-panel block now surfaces
-  bbox, message counts by MessageType, last frame type, and ship count —
-  use it to narrow down whether it's the subscription, the parse, or the
-  render. `state.aisLoggedSamples` also logs the first 3 parsed messages
-  to `console.log` for Safari Web Inspector / iOS debugging.
+- **AIS end-to-end**: PR #10 fixed the bbox-doesn't-update-on-center-change
+  bug that was the most likely cause of the "no ships appear" symptom.
+  If a busy port still reads `msgs 0` after PR #10 (the bbox diagnostic
+  matches the map but no traffic arrives), the problem is on aisstream's
+  side — key tier, verification, or the subscription-frame format — not
+  in our code. Log the diagnostic state from the settings panel and move
+  to investigate the account rather than the client.
 
 ## Roadmap
 
