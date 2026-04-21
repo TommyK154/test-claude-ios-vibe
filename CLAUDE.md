@@ -4,8 +4,15 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-A single-file ADS-B flight radar web app. Everything lives in `index.html` at
-the repo root — HTML, CSS, and JavaScript embedded. Deployed via GitHub Pages.
+An ADS-B flight radar web app deployed via GitHub Pages. Three source files
+at the repo root, loaded in this order:
+
+- `index.html` — HTML skeleton + `<link>` to `app.css` + `<script>` to `app.js`.
+- `app.css` — all styles.
+- `app.js` — all runtime logic, wrapped in a single IIFE.
+
+No build step, no bundler, no `package.json`. Pages serves the three files
+as-is. Browser caches CSS and JS independently.
 
 ### Runtime data sources
 
@@ -313,11 +320,14 @@ sessions.
 - Mobile-first. Tap targets stay at or above 44×44 CSS px.
 - Calm palette: off-white background, dark text, sage accent, dark radar panel.
 - Respect `prefers-reduced-motion`.
-- Keep the single-file invariant: HTML, CSS, JS all inline in `index.html`.
+- Three source files only: `index.html`, `app.css`, `app.js`. Keep CSS in
+  `app.css`, JS in `app.js`; don't re-inline into `index.html`. Don't add a
+  fourth source file without a PR that justifies the split.
 
 ## Editing
 
-- Prefer editing `index.html` in place over adding new files.
+- HTML structure goes in `index.html`. Styles go in `app.css`. Runtime logic
+  goes in `app.js`. Keep each concern in its own file.
 - Any non-API assets must be committed to the repo (no CDNs).
 
 ## Verification
