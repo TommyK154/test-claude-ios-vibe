@@ -535,6 +535,10 @@
       flex-direction: column;
       gap: 2px;
       margin-bottom: 8px;
+      /* Reserve space on the right so the LEAD picker (and any other
+         head-row controls) don't crowd the absolutely-positioned ✕ close
+         button at top:6 right:6 (width 44). */
+      padding-right: 56px;
     }
     .sel-head-row {
       display: flex;
@@ -651,14 +655,14 @@
     .sel-trend-seg {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
+      gap: 6px;
+      padding: 6px 10px;
       border: 1px solid var(--border-2);
-      border-radius: 4px;
+      border-radius: 5px;
       background: var(--surface-2);
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: 0.1em;
     }
     .sel-trend-label, .sel-trend-unit {
@@ -666,8 +670,8 @@
     }
     .sel-trend-btn {
       position: relative;
-      min-width: 22px;
-      padding: 4px 6px;
+      min-width: 30px;
+      padding: 7px 10px;
       border: 1px solid var(--border-2);
       background: var(--bg);
       color: var(--text);
@@ -682,7 +686,7 @@
     .sel-trend-btn::before {
       content: "";
       position: absolute;
-      inset: -10px -4px;
+      inset: -8px -4px;
     }
     .sel-trend-btn.active {
       background: var(--accent);
@@ -974,21 +978,26 @@
       height: 32px;
       min-width: 120px;
     }
+    /* Track is inset by half the thumb width on each side so its visible
+       span matches the range that the thumb apex can actually reach.
+       Fill lives inside the track, so its 0-100% left/width maps 1:1 to
+       the slider value range — apex of min-thumb touches fill-left when
+       altMin=0, apex of max-thumb touches fill-right when altMax=max. */
     .alt-range-track {
       position: absolute;
-      left: 0;
-      right: 0;
+      left: 8px;
+      right: 8px;
       top: 50%;
       height: 4px;
       transform: translateY(-50%);
       background: var(--border-2);
       border-radius: 2px;
+      overflow: hidden;
     }
     .alt-range-fill {
       position: absolute;
-      top: 50%;
-      height: 4px;
-      transform: translateY(-50%);
+      top: 0;
+      height: 100%;
       background: var(--accent);
       border-radius: 2px;
       pointer-events: none;

@@ -1472,8 +1472,9 @@
         return '<div class="chip-row alt-range-row' + (active ? " active" : "") + '" data-kind="plane-alt-range">' +
           '<span class="chip-row-label">ALT</span>' +
           '<div class="alt-range">' +
-            '<div class="alt-range-track"></div>' +
-            '<div class="alt-range-fill" id="altRangeFill"></div>' +
+            '<div class="alt-range-track">' +
+              '<div class="alt-range-fill" id="altRangeFill"></div>' +
+            '</div>' +
             '<input type="range" class="alt-range-input alt-range-min" id="altMinInput" min="0" max="50000" step="500" value="' + state.altMinFt + '" aria-label="Minimum altitude in feet" />' +
             '<input type="range" class="alt-range-input alt-range-max" id="altMaxInput" min="0" max="50000" step="500" value="' + state.altMaxFt + '" aria-label="Maximum altitude in feet" />' +
           '</div>' +
