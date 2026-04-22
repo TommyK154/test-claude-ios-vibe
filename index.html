@@ -56,7 +56,7 @@
       <div class="airport-search">
         <div class="airport-input-row">
           <div class="airport-input-wrap">
-            <input type="search" id="airportInput" placeholder="Airport code or city (e.g. SFO, KLAX, London)" autocomplete="off" spellcheck="false" autocapitalize="characters">
+            <input type="search" id="airportInput" placeholder="ICAO, IATA or city (e.g. SFO, KSFO, San Francisco)" autocomplete="off" spellcheck="false" autocapitalize="characters">
             <button type="button" id="airportClear" class="apt-clear" hidden aria-label="Clear">×</button>
           </div>
           <button type="button" id="airportGo" class="apt-go">GO</button>
@@ -89,6 +89,7 @@
         <span id="radarLoc">—</span>
         <span class="rcount"><span id="radarCount">0</span> aircraft</span>
       </div>
+      <div class="radar-overlay tile-status-row"><span id="tileStatus" class="tile-status" hidden></span></div>
       <svg class="radar-svg" id="radar" viewBox="-110 -110 220 220" aria-label="Aircraft radar">
         <defs>
           <clipPath id="radarClip"><circle cx="0" cy="0" r="100"/></clipPath>
@@ -129,25 +130,47 @@
       </svg>
     </div>
 
-    <div class="radar-extras">
-      <div id="leadPicker" class="sel-trend-seg lead-picker-standalone" role="group" aria-label="Lead projection length">
-        <span class="sel-trend-label">LEAD</span>
-        <button type="button" class="sel-trend-btn" data-trend-min="1" aria-label="Lead 1 min">1</button>
-        <button type="button" class="sel-trend-btn" data-trend-min="2" aria-label="Lead 2 min">2</button>
-        <button type="button" class="sel-trend-btn" data-trend-min="5" aria-label="Lead 5 min">5</button>
-        <span class="sel-trend-unit">MIN</span>
+    <div class="map-controls-row">
+      <div class="map-layer-control" id="mapLayerControl">
+        <button type="button" class="map-layer-pill" id="mapLayerPill" aria-expanded="false" aria-haspopup="listbox" aria-label="Map layer">
+          <span class="mlp-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M2 4.6l6-2.6 6 2.6-6 2.6z"/><path d="M2 8l6 2.6 6-2.6"/><path d="M2 11.4l6 2.6 6-2.6"/></svg>
+          </span>
+          <span class="mlp-label" id="mapLayerLabel">Satellite</span>
+          <span class="mlp-caret" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+          </span>
+        </button>
+        <div class="map-layer-dropdown" id="mapLayerDropdown" hidden role="listbox">
+          <button type="button" class="map-layer-option" data-map-layer="satellite" role="option">Satellite</button>
+          <button type="button" class="map-layer-option inop" data-map-layer="sectional" role="option">VFR Sectional</button>
+          <button type="button" class="map-layer-option inop" data-map-layer="ifr-low" role="option">IFR Low</button>
+          <button type="button" class="map-layer-option inop" data-map-layer="ifr-high" role="option">IFR High</button>
+        </div>
       </div>
+
+      <div class="lead-pill" id="leadPill" data-state="collapsed">
+        <button type="button" class="lp-collapsed" id="leadPillTrigger" aria-expanded="false" aria-label="Lead projection length">
+          <span class="lp-kw">LEAD</span>
+          <span class="lp-val" id="leadPillValue">1</span>
+          <span class="lp-unit">MIN</span>
+        </button>
+        <div class="lp-expanded" id="leadPicker" role="group" aria-label="Lead projection length">
+          <span class="lp-kw">LEAD</span>
+          <button type="button" class="lp-opt sel-trend-btn" data-trend-min="1" aria-label="Lead 1 min">1</button>
+          <button type="button" class="lp-opt sel-trend-btn" data-trend-min="2" aria-label="Lead 2 min">2</button>
+          <button type="button" class="lp-opt sel-trend-btn" data-trend-min="5" aria-label="Lead 5 min">5</button>
+          <span class="lp-unit">MIN</span>
+        </div>
+      </div>
+
+      <button type="button" class="legend-icon" id="legendToggle" aria-expanded="false" aria-label="Toggle legend">?</button>
+    </div>
+
     <div class="legend" id="legend">
-      <button type="button" class="legend-toggle" id="legendToggle" aria-expanded="false" aria-label="Toggle legend">
-        <span class="lg-q" aria-hidden="true">?</span>
-        <span>Legend</span>
-        <span class="chevron" aria-hidden="true">
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
-        </span>
-      </button>
       <div class="legend-body">
         <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
-        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Lead</span><span class="lg-v">Projected position in 1 / 2 / 5 min at current speed &amp; heading · tap any value in the LEAD picker below the radar to set</span></div>
+        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Lead</span><span class="lg-v">Projected position in 1 / 2 / 5 min at current speed &amp; heading · tap the LEAD pill below the radar to change</span></div>
         <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
         <div class="lg-row lg-alt-row">
           <span class="lg-k">Altitude</span>
@@ -156,7 +179,7 @@
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
                 <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
               </svg>
-              <span>&lt; 10k</span>
+              <span>&lt; 10k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -164,7 +187,7 @@
                 <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>10–20k</span>
+              <span>10–20k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -174,7 +197,7 @@
                 <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>20–30k</span>
+              <span>20–30k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -186,7 +209,7 @@
                 <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>30–40k</span>
+              <span>30–40k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -200,7 +223,7 @@
                 <polyline points="-1.8,9.3 0,8.4 1.8,9.3" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,9.3 0,8.4 1.8,9.3" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>40k+</span>
+              <span>40k+ ft</span>
             </div>
           </div>
         </div>
@@ -209,7 +232,6 @@
         <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange fill: flagged military / notable callsign</span></div>
         <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel</span></div>
       </div>
-    </div>
     </div>
 
     <div class="selected-card" id="selectedCard">
@@ -230,6 +252,7 @@
     <footer class="page-footer">Imagery © Esri, Maxar, Earthstar Geographics · Flight data: adsb.fi / adsb.lol / OpenSky · Photos: planespotters.net · Routes: adsbdb.com · AIS: aisstream.io</footer>
   </div>
 
+  <script async src="airports.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
