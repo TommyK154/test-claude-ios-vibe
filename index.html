@@ -129,6 +129,14 @@
       </svg>
     </div>
 
+    <div class="radar-extras">
+      <div id="leadPicker" class="sel-trend-seg lead-picker-standalone" role="group" aria-label="Lead projection length">
+        <span class="sel-trend-label">LEAD</span>
+        <button type="button" class="sel-trend-btn" data-trend-min="1" aria-label="Lead 1 min">1</button>
+        <button type="button" class="sel-trend-btn" data-trend-min="2" aria-label="Lead 2 min">2</button>
+        <button type="button" class="sel-trend-btn" data-trend-min="5" aria-label="Lead 5 min">5</button>
+        <span class="sel-trend-unit">MIN</span>
+      </div>
     <div class="legend" id="legend">
       <button type="button" class="legend-toggle" id="legendToggle" aria-expanded="false" aria-label="Toggle legend">
         <span class="lg-q" aria-hidden="true">?</span>
@@ -139,7 +147,7 @@
       </button>
       <div class="legend-body">
         <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
-        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Lead</span><span class="lg-v">Projected position in 1 / 2 / 5 min at current speed &amp; heading · tap any value on the selected card to set</span></div>
+        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Lead</span><span class="lg-v">Projected position in 1 / 2 / 5 min at current speed &amp; heading · tap any value in the LEAD picker below the radar to set</span></div>
         <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
         <div class="lg-row lg-alt-row">
           <span class="lg-k">Altitude</span>
@@ -201,6 +209,7 @@
         <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange fill: flagged military / notable callsign</span></div>
         <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel</span></div>
       </div>
+    </div>
     </div>
 
     <div class="selected-card" id="selectedCard">

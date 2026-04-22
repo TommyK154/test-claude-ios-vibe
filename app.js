@@ -348,11 +348,6 @@
           var tgt = e.target && e.target.closest ? e.target : null;
           var btn = tgt && tgt.closest(".sel-close");
           if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); return; }
-          var trendBtn = tgt && tgt.closest("[data-trend-min]");
-          if (trendBtn) {
-            e.preventDefault(); e.stopPropagation();
-            setTrendMin(trendBtn.getAttribute("data-trend-min"));
-          }
         });
       }
       var liveDot = $("liveDot");
@@ -1723,7 +1718,6 @@
           alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
         }
         var anomaliesHtml = renderAnomalyChips(p);
-        var controlChipHtml = renderControlChips();
         var missStrip = renderMissStrip();
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
@@ -1731,13 +1725,8 @@
           // Top strip (TRACK + ✕ inline) — close button lives inside
           // statusRowHtml so it aligns with the TRACK line vertically.
           statusRowHtml +
-          // Callsign row with LEAD picker right-aligned at the same
-          // vertical level as the callsign, directly below the ✕.
           '<div class="sel-head">' +
-            '<div class="sel-head-row">' +
-              '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
-              controlChipHtml +
-            '</div>' +
+            '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
             (subtitle ? '<span class="sel-reg">' + subtitle + '</span>' : '') +
           '</div>' +
           alertsHtml +
@@ -1807,30 +1796,28 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Returns the LEAD segmented picker rendered inline on the plane
-      // card — three buttons (1 / 2 / 5 MIN) with the active value
-      // highlighted. Tap any button to jump directly to that length (no
-      // cycling). "LEAD" (aviation/weapons term for a projected intercept
-      // position) was chosen over "TREND" because it doesn't confuse with
-      // the TRAIL (actual flown path) and reads more directly as "where
-      // will the plane be N minutes from now".
-      function renderControlChips() {
+      // Keeps the standalone LEAD picker's active-button class in sync
+      // with state.trendMin. The picker lives persistently under the
+      // radar (left-justified, mirroring the LEGEND on the right) — it's
+      // no longer rendered inside the plane card. LEAD is the aviation/
+      // weapons-systems term for a projected intercept position (chosen
+      // over "TREND" to avoid confusion with the TRAIL = actual flown
+      // path).
+      function syncLeadPicker() {
+        var picker = document.getElementById("leadPicker");
+        if (!picker) return;
         var tm = state.trendMin || 5;
-        var options = [1, 2, 5];
-        var buttons = options.map(function (m) {
-          var active = (m === tm) ? " active" : "";
-          return '<button type="button" class="sel-trend-btn' + active +
-            '" data-trend-min="' + m + '" aria-label="Lead ' + m + ' min"' +
-            (active ? ' aria-pressed="true"' : '') + '>' + m + '</button>';
-        }).join("");
-        return '<div class="sel-trend-seg" role="group" aria-label="Lead projection length">' +
-          '<span class="sel-trend-label">LEAD</span>' +
-          buttons +
-          '<span class="sel-trend-unit">MIN</span>' +
-        '</div>';
+        var btns = picker.querySelectorAll("[data-trend-min]");
+        for (var i = 0; i < btns.length; i++) {
+          var m = parseInt(btns[i].getAttribute("data-trend-min"), 10);
+          var isActive = (m === tm);
+          btns[i].classList.toggle("active", isActive);
+          if (isActive) btns[i].setAttribute("aria-pressed", "true");
+          else btns[i].removeAttribute("aria-pressed");
+        }
       }
 
-      // Called when any TREND segmented button is tapped. Jumps directly
+      // Called when any LEAD segmented button is tapped. Jumps directly
       // to the requested length (1, 2, or 5 min) and persists.
       function setTrendMin(n) {
         var v = parseInt(n, 10);
@@ -1838,8 +1825,21 @@
         if (state.trendMin === v) return;
         state.trendMin = v;
         try { localStorage.setItem("trend.minutes", String(v)); } catch (e) {}
+        syncLeadPicker();
         renderOverlays();
         renderSelected();
+      }
+
+      function setupLeadPicker() {
+        var picker = document.getElementById("leadPicker");
+        if (!picker) return;
+        picker.addEventListener("click", function (e) {
+          var tgt = e.target && e.target.closest ? e.target.closest("[data-trend-min]") : null;
+          if (!tgt) return;
+          e.preventDefault();
+          setTrendMin(tgt.getAttribute("data-trend-min"));
+        });
+        syncLeadPicker();
       }
 
       function renderAnomalyChips(p) {
@@ -3209,6 +3209,7 @@
       setupAirportSearch();
       setupRadarDrag();
       setupSettings();
+      setupLeadPicker();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");
