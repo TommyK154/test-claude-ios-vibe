@@ -731,8 +731,12 @@
     }
     .lead-picker-standalone {
       /* Slightly pop the outline so it doesn't melt into the dark bg when
-         nothing is selected (no gold card below to anchor it visually). */
+         nothing is selected (no gold card below to anchor it visually).
+         min-height matches the LEGEND disclosure pill (also 44 px) so
+         the two controls sit at equal height across the row. */
       border-color: var(--border-2);
+      min-height: 44px;
+      box-sizing: border-box;
     }
     .legend {
       display: flex;
