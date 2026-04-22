@@ -272,6 +272,7 @@
         lastSelectedPlane: null, // grace-period snapshot after deselect so the marker doesn't disappear
         lastSelectedAt: 0,       // ms timestamp when lastSelectedPlane was set
         aircraftOwner: {}, // hex -> { operator, type, ... } from adsbdb.com, cached per selection
+        airportLive: {},   // ICAO -> { apt } | null | "pending" — live-fetched fallback for fields not in bundled OpenFlights (e.g. small US GA like KSZP)
         aisMessageCount: 0,
         aisFirstMsgAt: 0,
         aisNoTrafficTimer: null,
@@ -402,6 +403,37 @@
         });
       }
 
+      // Edge-fade overflow hint for horizontal scroll rows. Sets --ov-l / --ov-r
+      // (0..1) on the row based on whether content continues past each edge.
+      // CSS uses these to fade the appropriate side of the mask — signals
+      // "there's more here, swipe this way" without a scrollbar.
+      function updateOverflowHint(row) {
+        var sw = row.scrollWidth, cw = row.clientWidth, sl = row.scrollLeft;
+        var canLeft  = sl > 1 ? "1" : "0";
+        var canRight = (sl + cw) < (sw - 1) ? "1" : "0";
+        row.style.setProperty("--ov-l", canLeft);
+        row.style.setProperty("--ov-r", canRight);
+      }
+      function installOverflowHints(container) {
+        if (!container) return;
+        var rows = container.matches && container.matches(".chip-row, .preset-row")
+          ? [container]
+          : Array.prototype.slice.call(container.querySelectorAll(".chip-row, .preset-row"));
+        rows.forEach(function (row) {
+          if (row.__ovHinted) { updateOverflowHint(row); return; }
+          row.__ovHinted = true;
+          updateOverflowHint(row);
+          row.addEventListener("scroll", function () { updateOverflowHint(row); }, { passive: true });
+          if (typeof ResizeObserver !== "undefined") {
+            var ro = new ResizeObserver(function () { updateOverflowHint(row); });
+            ro.observe(row);
+          }
+        });
+      }
+      window.addEventListener("resize", function () {
+        document.querySelectorAll(".chip-row, .preset-row").forEach(updateOverflowHint);
+      });
+
       function buildPresets() {
         presetRow.innerHTML = "";
         var geoBtn = document.createElement("button");
@@ -425,6 +457,7 @@
           });
           presetRow.appendChild(b);
         });
+        installOverflowHints(presetRow);
       }
 
       function markActivePreset() {
@@ -1538,7 +1571,7 @@
           { k: "ground", label: "GROUND" },
           { k: "mil", label: "MIL" },
           { k: "notable", label: "NOTABLE" },
-          { k: "emerg", label: "⚠" }
+          { k: "emerg", label: "EMERGENCY" }
         ];
         var planeSorts = [
           { k: "dist", label: "DIST" },
@@ -1602,6 +1635,7 @@
           });
         });
         wireAltRangeSlider();
+        installOverflowHints(controls);
       }
 
       // Formats a ft value as an aviation flight level ("FL080" for 8,000 ft,
@@ -2571,6 +2605,59 @@
         }
       });
 
+      // Parses FAA NASR-style DMS coords like "34-20-51.1000N" / "119-03-36.0000W"
+      // into signed decimal degrees. Returns NaN on any parse failure.
+      function parseDMS(s) {
+        if (typeof s !== "string") return NaN;
+        var m = s.match(/^\s*(\d+)[-\s](\d+)[-\s]([\d.]+)\s*([NSEW])\s*$/i);
+        if (!m) return NaN;
+        var deg = parseFloat(m[1]), min = parseFloat(m[2]), sec = parseFloat(m[3]);
+        var val = deg + min / 60 + sec / 3600;
+        var dir = m[4].toUpperCase();
+        if (dir === "S" || dir === "W") val = -val;
+        return val;
+      }
+
+      // Live airport lookup fallback for ICAO codes missing from the bundled
+      // OpenFlights dataset (which omits most small US GA fields). Hits the
+      // free FAA NASR mirror at aviationapi.com, then CORS proxies on failure.
+      // Result cached on state.airportLive keyed by uppercased ICAO.
+      // onResolve fires with the apt object (or null) so the caller can re-render.
+      function fetchAirportLive(icao, onResolve) {
+        icao = (icao || "").trim().toUpperCase();
+        if (!icao) return;
+        var cached = state.airportLive[icao];
+        if (cached === "pending") return;
+        if (cached !== undefined) { onResolve(cached); return; }
+        state.airportLive[icao] = "pending";
+        var base = "https://api.aviationapi.com/v1/airports?apt=" + encodeURIComponent(icao);
+        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
+        tryPhotoUrls(urls, 0).then(function (j) {
+          var arr = j && j[icao];
+          var row = arr && arr.length ? arr[0] : null;
+          if (!row) { state.airportLive[icao] = null; onResolve(null); return; }
+          var lat = parseFloat(row.latitude_deg != null ? row.latitude_deg : row.latitude);
+          var lon = parseFloat(row.longitude_deg != null ? row.longitude_deg : row.longitude);
+          if (!isFinite(lat)) lat = parseDMS(row.latitude);
+          if (!isFinite(lon)) lon = parseDMS(row.longitude);
+          if (!isFinite(lat) || !isFinite(lon)) { state.airportLive[icao] = null; onResolve(null); return; }
+          var apt = {
+            iata: row.faa_ident && row.faa_ident !== row.icao_id ? row.faa_ident : "",
+            icao: row.icao_id || icao,
+            name: row.facility_name || icao,
+            city: row.city || "",
+            country: row.state_full || "United States",
+            lat: lat,
+            lon: lon
+          };
+          state.airportLive[icao] = apt;
+          onResolve(apt);
+        }).catch(function () {
+          state.airportLive[icao] = null;
+          onResolve(null);
+        });
+      }
+
       function setupAirportSearch() {
         var input = document.getElementById("airportInput");
         var dropdown = document.getElementById("airportDropdown");
@@ -2608,7 +2695,37 @@
             var tot = exactIata.length + exactIcao.length + prefixIata.length + prefixIcao.length + prefixCity.length + substr.length;
             if (tot > 40) break;
           }
-          return exactIata.concat(exactIcao, prefixIata, prefixIcao, prefixCity, substr).slice(0, 8);
+          var out = exactIata.concat(exactIcao, prefixIata, prefixIcao, prefixCity, substr).slice(0, 8);
+          // Merge in live-fetched airport (e.g. KSZP from aviationapi.com
+          // for small US GA fields absent from bundled OpenFlights).
+          if (!out.length) {
+            var live = state.airportLive[q];
+            if (live && typeof live === "object") out = [live];
+          }
+          return out;
+        }
+
+        // Query looks like a full 4-letter ICAO — the aviationapi.com fallback
+        // is FAA-only so IATA prefixes won't hit. Restricting to 4 letters
+        // also naturally dedupes requests as the user types.
+        function isCodeShaped(q) {
+          q = q.trim().toUpperCase();
+          if (q.indexOf(" · ") > 0) q = q.substring(0, q.indexOf(" · "));
+          return /^[A-Z]{4}$/.test(q);
+        }
+        function canonQuery(q) {
+          q = q.trim().toUpperCase();
+          var sep = q.indexOf(" · ");
+          return sep > 0 ? q.substring(0, sep) : q;
+        }
+        function maybeLiveLookup(q) {
+          if (!isCodeShaped(q)) return;
+          var code = canonQuery(q);
+          fetchAirportLive(code, function () {
+            // Re-render only if user hasn't moved on to a different query.
+            if (canonQuery(input.value) !== code) return;
+            render(match(input.value));
+          });
         }
 
         function render(matches) {
@@ -2617,7 +2734,13 @@
             var q = input.value.trim();
             if (!q) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
             dropdown.hidden = false;
-            dropdown.innerHTML = '<div class="apt-item" style="cursor:default"><span class="apt-code" style="color:var(--muted)">—</span><span class="apt-name" style="color:var(--muted)">No match in built-in list · try lat/lon below</span></div>';
+            var code = canonQuery(q);
+            var live = isCodeShaped(q) ? state.airportLive[code] : undefined;
+            var msg;
+            if (live === "pending") msg = "Searching FAA registry…";
+            else if (live === null) msg = "No match · try lat/lon below";
+            else msg = "No match in built-in list · try lat/lon below";
+            dropdown.innerHTML = '<div class="apt-item" style="cursor:default"><span class="apt-code" style="color:var(--muted)">—</span><span class="apt-name" style="color:var(--muted)">' + escapeHtml(msg) + '</span></div>';
             return;
           }
           dropdown.hidden = false;
@@ -2645,6 +2768,9 @@
                   var cand = list[k];
                   if ((iata && cand.iata === iata) || (icao && cand.icao === icao)) { apt = cand; break; }
                 }
+                if (!apt && icao && state.airportLive[icao] && typeof state.airportLive[icao] === "object") {
+                  apt = state.airportLive[icao];
+                }
                 if (!apt) return;
                 var label = apt.iata || apt.icao;
                 state.center = { lat: apt.lat, lon: apt.lon, label: label, id: apt.icao || apt.iata };
@@ -2669,20 +2795,41 @@
           var m = match(input.value);
           if (!m.length) return false;
           var apt = m[Math.max(0, Math.min(idx, m.length - 1))];
-          state.center = { lat: apt.lat, lon: apt.lon, label: apt.iata, id: apt.icao };
+          var label = apt.iata || apt.icao || "";
+          state.center = { lat: apt.lat, lon: apt.lon, label: label, id: apt.icao || apt.iata };
           syncCoordInputs();
           markActivePreset();
-          input.value = apt.iata + " · " + apt.city;
+          input.value = label + (apt.city ? " · " + apt.city : "");
           dropdown.hidden = true;
           input.blur();
           toggleClear();
           onCenterChanged();
           return true;
         }
-        function applyFirstMatch() { return applyIndex(highlighted < 0 ? 0 : highlighted); }
+        function applyFirstMatch() {
+          if (applyIndex(highlighted < 0 ? 0 : highlighted)) return true;
+          // Nothing bundled matched — if query looks like a code, try
+          // live lookup then apply when it returns.
+          if (isCodeShaped(input.value)) {
+            maybeLiveLookup(input.value);
+          }
+          return false;
+        }
 
-        input.addEventListener("input", function () { toggleClear(); render(match(input.value)); });
-        input.addEventListener("focus", function () { toggleClear(); if (input.value) render(match(input.value)); });
+        input.addEventListener("input", function () {
+          toggleClear();
+          var m = match(input.value);
+          if (!m.length) maybeLiveLookup(input.value);
+          render(match(input.value));
+        });
+        input.addEventListener("focus", function () {
+          toggleClear();
+          if (input.value) {
+            var m = match(input.value);
+            if (!m.length) maybeLiveLookup(input.value);
+            render(match(input.value));
+          }
+        });
         var goBtn = document.getElementById("airportGo");
         if (goBtn) goBtn.addEventListener("click", applyFirstMatch);
         input.addEventListener("keydown", function (e) {
