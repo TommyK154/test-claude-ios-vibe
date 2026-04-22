@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
   pull-requests: write
 
 concurrency:
@@ -20,17 +18,15 @@ jobs:
   deploy-main:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy main to gh-pages root
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: '.'
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          branch: gh-pages
+          folder: .
+          clean: true
+          clean-exclude: pr-preview
 
   deploy-preview:
     if: github.event_name == 'pull_request'
