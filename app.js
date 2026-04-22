@@ -1,6 +1,20 @@
     (function () {
       "use strict";
 
+      // Preview-deploy banner: the PR preview workflow publishes under
+      // /pr-preview/pr-N/ on the same Pages site as production. On those
+      // URLs — and ONLY on those URLs — show a green banner identifying
+      // which PR this deployment reflects, so a reviewer can never
+      // confuse a preview with production. No-op on the production path.
+      (function () {
+        var m = window.location.pathname.match(/\/pr-preview\/pr-(\d+)\//);
+        if (!m) return;
+        var banner = document.getElementById("previewBanner");
+        if (!banner) return;
+        banner.textContent = "PREVIEW DEPLOY · PR #" + m[1] + " · not production";
+        banner.hidden = false;
+      })();
+
       var PRESETS = [
         { id: "sfo", label: "San Francisco", lat: 37.6188, lon: -122.3754 },
         { id: "lax", label: "Los Angeles",   lat: 33.9416, lon: -118.4085 },
