@@ -1728,13 +1728,16 @@
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
           missStrip +
-          // Top strip (TRACK + ✕ inline) — close button now lives inside
+          // Top strip (TRACK + ✕ inline) — close button lives inside
           // statusRowHtml so it aligns with the TRACK line vertically.
           statusRowHtml +
-          // LEAD picker on its own right-aligned row, directly below the ✕.
-          '<div class="sel-controls-row">' + controlChipHtml + '</div>' +
+          // Callsign row with LEAD picker right-aligned at the same
+          // vertical level as the callsign, directly below the ✕.
           '<div class="sel-head">' +
-            '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
+            '<div class="sel-head-row">' +
+              '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
+              controlChipHtml +
+            '</div>' +
             (subtitle ? '<span class="sel-reg">' + subtitle + '</span>' : '') +
           '</div>' +
           alertsHtml +
