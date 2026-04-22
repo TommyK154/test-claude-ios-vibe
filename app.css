@@ -26,6 +26,24 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
 
+    .preview-banner {
+      background: #2d6e3e;
+      color: #eaf7ee;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 7px 12px calc(7px + env(safe-area-inset-top)) 12px;
+      margin-top: calc(-1 * env(safe-area-inset-top));
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid #4fa366;
+    }
+    .preview-banner a { color: #b9e8c6; text-decoration: underline; }
+
     body {
       font-family: var(--sans);
       background: var(--bg);
