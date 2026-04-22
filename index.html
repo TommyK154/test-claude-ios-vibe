@@ -45,12 +45,6 @@
         <p class="setting-help ais-diag-hint">If you see messages flowing but no ship markers, the subscribed bounding box may not match your map center — pan to a busy port (e.g. Rotterdam, Singapore, Houston) and wait ~30 s. aisstream's free tier only streams the bbox you subscribed to.</p>
       </div>
     </div>
-    <div id="modeToggle" class="mode-toggle" hidden>
-      <button type="button" class="mode-btn active" data-mode="both">BOTH</button>
-      <button type="button" class="mode-btn" data-mode="air">AIR</button>
-      <button type="button" class="mode-btn" data-mode="sea">SEA</button>
-    </div>
-
     <div class="controls" id="controlsPanel">
       <button type="button" class="controls-header" id="controlsToggle" aria-expanded="true">
         <h2>Location</h2>
@@ -146,12 +140,67 @@
       </button>
       <div class="legend-body">
         <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
-        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Trend</span><span class="lg-v">1 / 2 / 5 min projection at current speed &amp; heading · tap TREND chip on the selected card to cycle</span></div>
+        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Trend</span><span class="lg-v">1 / 2 / 5 min projection at current speed &amp; heading · tap any value on the selected card to set</span></div>
         <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold halo marks the selected contact</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Pulsing red halo: squawk 7500 / 7600 / 7700</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange: flagged military / notable callsign</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel (SEA layer)</span></div>
+        <div class="lg-row lg-alt-row">
+          <span class="lg-k">Altitude</span>
+          <div class="lg-alt-samples">
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+              </svg>
+              <span>&lt; 10k</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>10–20k</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,7.7 0,6.6 2.0,7.7" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,7.7 0,6.6 2.0,7.7" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>20–30k</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,7.7 0,6.6 2.0,7.7" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,7.7 0,6.6 2.0,7.7" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,9.5 0,8.4 2.0,9.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,9.5 0,8.4 2.0,9.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>30–40k</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,5.9 0,4.8 2.0,5.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,7.7 0,6.6 2.0,7.7" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,7.7 0,6.6 2.0,7.7" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,9.5 0,8.4 2.0,9.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,9.5 0,8.4 2.0,9.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,11.3 0,10.2 2.0,11.3" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-2.0,11.3 0,10.2 2.0,11.3" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>40k+</span>
+            </div>
+          </div>
+        </div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold fill + gold halo marks the selected contact</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Red fill + pulsing red halo: squawk 7500 / 7600 / 7700</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange fill: flagged military / notable callsign</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel</span></div>
       </div>
     </div>
 

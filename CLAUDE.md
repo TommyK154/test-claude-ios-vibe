@@ -132,6 +132,32 @@ both. When editing:
 `state.planes` as a secondary defence. Trail / route / trend vector are
 never drawn for `lastSelectedPlane` — deselect strips overlays by design.
 
+### Altitude shape vs interest color (two-channel rule)
+
+The plane marker encodes two independent axes using two different
+visual channels, so they never collide:
+
+- **Shape (chevron count) = altitude band.** `altitudeChevronCount(altFt)`
+  returns 0 (< 10k) to 4 (≥ 40k). The renderer stacks that many
+  sergeant-rank chevrons behind the triangle, in the plane's own color.
+  Chevrons rotate with the triangle so they always trail in the
+  heading direction. `onGround` planes render as a small circle with
+  zero chevrons; altitude semantics don't apply when stationary.
+- **Color (fill) = interest.** Default airborne = `--plane` (cyan).
+  Selected = `--plane-selected` (gold) + gold halo + white stroke.
+  Emergency squawk = red + pulsing red halo. Military (in
+  `state.military`) = orange fill. Ground = `--plane-ground` (gray).
+  These overrides stay on fill only — chevrons inherit the same color
+  so the whole marker reads as one unit.
+
+**Never shove a new category into the fill channel without asking
+whether it belongs in the shape channel instead.** The palette is
+split so that altitude lives on shape-count and interest lives on
+color. If you add a new state (e.g. "spoofed position" or "loitering"),
+pick the channel deliberately. A new altitude semantic → extend the
+chevron-count bands. A new interest semantic → use a halo, stroke, or
+small accent element, not the fill color of the triangle.
+
 ### Motion ticker (dead reckoning)
 
 `deadReckonTick` runs at 1 Hz and advances every plane / ship's *display*
@@ -264,6 +290,22 @@ data; the concentric rings are pure distance references (no clip-path).
   drops the idle session after a timeout. Fix path is on aisstream:
   regenerate the key from their dashboard, wait 24–48 h for activation,
   or open an issue at github.com/aisstream/issues.
+- **Stale route lookups by callsign**: `api.adsbdb.com/v0/callsign/{callsign}`
+  returns a filed route keyed on the callsign string, not the ICAO24 hex
+  of the specific aircraft currently flying it. Regional carriers reuse
+  the same callsign across successive flights in a day (e.g. Horizon
+  Air's `QXE2316` flies SJC→LAX earlier then SAN→RDM later on the same
+  aircraft's dispatch card). `state.routes[callsign]` caches the first
+  lookup, so the card can show a wrong origin/destination pair even
+  though the callsign and hex on-screen are correct for *the current
+  flight*. Confirmed example (2026-04-22): app showed `QXE2316 SJC→LAX`
+  while the live flight (N628QX, hex ae5a1c) was actually SAN→RDM per
+  Apple Wallet + carrier status. Fix direction: (a) include the ICAO24
+  hex in the cache key so different aircraft on the same callsign don't
+  collide, (b) cross-check the route's expected geography against the
+  plane's current position + heading and invalidate the cache entry if
+  the endpoints are impossible, (c) re-fetch on selection instead of
+  using cache on session-long TTL. Deferred to a follow-up PR.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,
