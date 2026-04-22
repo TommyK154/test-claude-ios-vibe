@@ -1571,7 +1571,7 @@
           { k: "ground", label: "GROUND" },
           { k: "mil", label: "MIL" },
           { k: "notable", label: "NOTABLE" },
-          { k: "emerg", label: "EMERGENCY" }
+          { k: "emerg", label: "EMERG" }
         ];
         var planeSorts = [
           { k: "dist", label: "DIST" },
