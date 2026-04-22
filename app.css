@@ -152,34 +152,6 @@
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
-    /* 4-way base-map picker inside the settings panel. Grid layout so the
-       buttons wrap cleanly on narrow screens (2×2) and line up in a row
-       on wider viewports. Active layer reads in accent color — same
-       pattern as the LEAD / filter chips elsewhere. */
-    .map-layer-picker {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-      gap: 6px;
-    }
-    .map-layer-btn {
-      min-height: 40px;
-      padding: 0 10px;
-      border: 1px solid var(--border-2);
-      background: var(--bg);
-      color: var(--text);
-      border-radius: 4px;
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.1em;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .map-layer-btn.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #0a1018;
-    }
     .ais-status { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-top: 4px; }
     .ais-status.ok { color: var(--accent); }
     .ais-status.err { color: var(--danger); }
@@ -362,10 +334,17 @@
     }
     .preset-row {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 6px;
       margin-bottom: 12px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
     }
+    .preset-row::-webkit-scrollbar { display: none; }
+    .preset-row > * { flex: 0 0 auto; scroll-snap-align: start; }
     .preset {
       min-height: 36px;
       padding: 7px 12px;
@@ -533,6 +512,8 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .tile-status[hidden] { display: none !important; }
+    .tile-status:empty { display: none !important; }
     .tile-status.err {
       background: rgba(227, 125, 125, 0.16);
       border: 1px solid var(--danger);
@@ -775,74 +756,220 @@
       color: #0a1018;
     }
 
-    /* Row under the radar that hosts the persistent LEAD picker (left)
-       and the LEGEND disclosure (right). Both always visible — LEAD is
-       no longer nested inside the plane card. */
-    .radar-extras {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      margin: 8px 0 16px;
-    }
-    .lead-picker-standalone {
-      /* Slightly pop the outline so it doesn't melt into the dark bg when
-         nothing is selected (no gold card below to anchor it visually).
-         min-height matches the LEGEND disclosure pill (also 44 px) so
-         the two controls sit at equal height across the row. */
-      border-color: var(--border-2);
-      min-height: 44px;
-      box-sizing: border-box;
-    }
-    .legend {
+    /* Below-radar control row — Map Layer pill (left), LEAD pill (middle),
+       Legend "?" icon (right). Single line; never wraps. All controls
+       match 44 CSS px height for tap-target parity. */
+    .map-controls-row {
       position: relative;
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0 12px;
+      min-height: 44px;
     }
-    .legend-toggle {
+
+    /* Map Layer control: pill + anchored dropdown */
+    .map-layer-control { position: relative; flex: 0 0 auto; }
+    .map-layer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      min-height: 44px;
+      max-width: 170px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .map-layer-pill .mlp-icon { display: inline-flex; color: var(--accent); }
+    .map-layer-pill .mlp-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .map-layer-pill .mlp-caret {
+      display: inline-flex;
+      color: var(--muted);
+      transition: transform 180ms ease;
+    }
+    .map-layer-pill[aria-expanded="true"] .mlp-caret { transform: rotate(180deg); }
+    .map-layer-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 200px;
+      padding: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .map-layer-dropdown[hidden] { display: none; }
+    .map-layer-option {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-align: left;
+      border-radius: 4px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .map-layer-option:hover, .map-layer-option:focus {
+      background: var(--surface-2);
+      outline: none;
+    }
+    .map-layer-option.active {
+      background: var(--accent);
+      color: #0a1018;
+    }
+
+    /* INOP pilot-sticker overlay — yellow/black hazard-stripe placard
+       like a broken-switch cover. pointer-events:none so the row below
+       still takes taps and triggers the tile-fail banner. */
+    .map-layer-option.inop { opacity: 0.92; }
+    .map-layer-option.inop::after {
+      content: "INOP";
+      position: absolute;
+      inset: 4px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: repeating-linear-gradient(
+        135deg,
+        #f3c11a 0, #f3c11a 7px,
+        #1a1508 7px, #1a1508 10px,
+        #f3c11a 10px, #f3c11a 44px
+      );
+      color: #1a1508;
+      font-family: var(--mono);
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      border: 1.5px solid #1a1508;
+      border-radius: 2px;
+      transform: rotate(-3deg);
+      box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.55),
+        0 6px 12px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+
+    /* LEAD pill — collapses to label+value, expands to 3-option segmented
+       on tap. Width transitions + options stagger-fade in for a tactile feel. */
+    .lead-pill { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; }
+    .lp-collapsed {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 0 14px;
       min-height: 44px;
       background: var(--surface);
-      color: var(--muted);
+      color: var(--text);
       border: 1px solid var(--border);
       border-radius: 22px;
       font-family: var(--mono);
+      font-weight: 700;
       font-size: 11px;
       letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-weight: 700;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
-    .legend-toggle:hover, .legend-toggle:active {
+    .lp-collapsed .lp-kw, .lp-collapsed .lp-unit { color: var(--muted); }
+    .lp-collapsed .lp-val { color: var(--accent); font-size: 14px; min-width: 1em; text-align: center; }
+    .lp-expanded {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      min-height: 44px;
+      background: var(--surface);
       color: var(--text);
-      border-color: var(--border-2);
+      border: 1px solid var(--border);
+      border-radius: 22px;
     }
-    .legend-toggle .lg-q {
+    .lp-expanded .lp-kw, .lp-expanded .lp-unit {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+    .lead-pill[data-state="expanded"] .lp-collapsed { display: none; }
+    .lead-pill[data-state="expanded"] .lp-expanded { display: inline-flex; }
+    .lp-opt {
+      min-width: 32px;
+      min-height: 32px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+    .lead-pill[data-state="expanded"] .lp-opt { opacity: 1; transform: translateX(0); }
+    .lead-pill[data-state="expanded"] .lp-opt:nth-of-type(2) { transition-delay: 40ms; }
+    .lead-pill[data-state="expanded"] .lp-opt:nth-of-type(3) { transition-delay: 80ms; }
+    .lp-opt.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0a1018;
+    }
+
+    /* Legend icon — right-aligned 44×44 "?" circle */
+    .legend-icon {
+      margin-left: auto;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-weight: 900;
+      font-size: 18px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      border: 1px solid currentColor;
-      font-size: 10px;
-      line-height: 1;
+      flex: 0 0 auto;
     }
+    .legend-icon:hover, .legend-icon:active { color: var(--text); border-color: var(--border-2); }
+    .legend-icon[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+
+    /* Legend container sits below the control row; body hidden until .open.
+       Body now flows inline (no absolute positioning) so it can't push the
+       row off the viewport edge. */
+    .legend { position: relative; margin: 0 0 12px; }
     .legend-body {
       display: none;
-      /* Float as a dropdown anchored to the toggle; this keeps the closed
-         legend at toggle-width even when open, so the .radar-extras flex
-         row can't be pushed off the right edge of the viewport by wide
-         legend content. */
-      position: absolute;
-      right: 0;
-      top: calc(100% + 6px);
-      width: min(340px, calc(100vw - 40px));
+      width: 100%;
       padding: 10px 12px;
       border: 1px solid var(--border);
       background: var(--surface);
@@ -851,11 +978,8 @@
       color: var(--text);
       line-height: 1.6;
       box-sizing: border-box;
-      z-index: 10;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
     }
     .legend.open .legend-body { display: block; }
-    .legend.open .legend-toggle .chevron { transform: rotate(180deg); }
     .legend-body .lg-row {
       display: flex;
       align-items: center;
@@ -1037,10 +1161,17 @@
     .list-controls:empty { display: none; }
     .chip-row {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 6px;
       align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
     }
+    .chip-row::-webkit-scrollbar { display: none; }
+    .chip-row > * { flex: 0 0 auto; scroll-snap-align: start; }
     .chip-row-label {
       font-family: var(--mono);
       font-size: 10px;

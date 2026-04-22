@@ -378,7 +378,7 @@
         var geoBtn = document.createElement("button");
         geoBtn.type = "button";
         geoBtn.className = "preset preset-geo";
-        geoBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/></svg>USE MY LOCATION';
+        geoBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/></svg>GPS';
         geoBtn.addEventListener("click", useGeolocation);
         presetRow.appendChild(geoBtn);
 
@@ -1903,25 +1903,26 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Keeps the standalone LEAD picker's active-button class in sync
-      // with state.trendMin. The picker lives persistently under the
-      // radar (left-justified, mirroring the LEGEND on the right) — it's
-      // no longer rendered inside the plane card. LEAD is the aviation/
-      // weapons-systems term for a projected intercept position (chosen
-      // over "TREND" to avoid confusion with the TRAIL = actual flown
-      // path).
+      // LEAD pill — persistent collapsed pill below the radar shows the
+      // current value. Tapping expands it to the 3-option segmented picker;
+      // tapping an option sets + collapses. LEAD is the aviation/weapons-
+      // systems term for a projected intercept position (chosen over
+      // "TREND" to avoid confusion with the TRAIL = actual flown path).
       function syncLeadPicker() {
-        var picker = document.getElementById("leadPicker");
-        if (!picker) return;
         var tm = state.trendMin || 5;
-        var btns = picker.querySelectorAll("[data-trend-min]");
-        for (var i = 0; i < btns.length; i++) {
-          var m = parseInt(btns[i].getAttribute("data-trend-min"), 10);
-          var isActive = (m === tm);
-          btns[i].classList.toggle("active", isActive);
-          if (isActive) btns[i].setAttribute("aria-pressed", "true");
-          else btns[i].removeAttribute("aria-pressed");
+        var picker = document.getElementById("leadPicker");
+        if (picker) {
+          var btns = picker.querySelectorAll("[data-trend-min]");
+          for (var i = 0; i < btns.length; i++) {
+            var m = parseInt(btns[i].getAttribute("data-trend-min"), 10);
+            var isActive = (m === tm);
+            btns[i].classList.toggle("active", isActive);
+            if (isActive) btns[i].setAttribute("aria-pressed", "true");
+            else btns[i].removeAttribute("aria-pressed");
+          }
         }
+        var val = document.getElementById("leadPillValue");
+        if (val) val.textContent = String(tm);
       }
 
       // Called when any LEAD segmented button is tapped. Jumps directly
@@ -1937,20 +1938,22 @@
         renderSelected();
       }
 
-      // Map-layer picker — 4 buttons in the settings panel switch between
-      // satellite (default) and VFR / IFR-low / IFR-high chart layers. Click
-      // handler swaps state.mapLayer, persists, and re-renders tiles. Active
-      // button stays in sync via syncMapLayerPicker() on init and after every
-      // set call.
+      // Map-layer control — pill below the radar opens a dropdown with
+      // Satellite + VFR / IFR-Low / IFR-High. Chart layers render with an
+      // INOP pilot-sticker overlay (CSS only) until the tile source can be
+      // verified against the user's network. Picking a chart layer still
+      // applies it — the tile-fail banner surfaces the failure.
       function syncMapLayerPicker() {
-        var el = document.getElementById("mapLayerPicker");
-        if (!el) return;
-        var btns = el.querySelectorAll("[data-map-layer]");
-        for (var i = 0; i < btns.length; i++) {
-          var isActive = btns[i].getAttribute("data-map-layer") === state.mapLayer;
-          btns[i].classList.toggle("active", isActive);
-          if (isActive) btns[i].setAttribute("aria-pressed", "true");
-          else btns[i].removeAttribute("aria-pressed");
+        var label = document.getElementById("mapLayerLabel");
+        if (label) label.textContent = (MAP_LAYERS[state.mapLayer] || MAP_LAYERS.satellite).label;
+        var dd = document.getElementById("mapLayerDropdown");
+        if (!dd) return;
+        var opts = dd.querySelectorAll("[data-map-layer]");
+        for (var i = 0; i < opts.length; i++) {
+          var isActive = opts[i].getAttribute("data-map-layer") === state.mapLayer;
+          opts[i].classList.toggle("active", isActive);
+          if (isActive) opts[i].setAttribute("aria-selected", "true");
+          else opts[i].removeAttribute("aria-selected");
         }
       }
       function setMapLayer(v) {
@@ -1959,21 +1962,47 @@
         state.mapLayer = v;
         try { localStorage.setItem("map.layer", v); } catch (e) {}
         syncMapLayerPicker();
-        // Clear any stale failure banner from the previous layer before the
-        // new render's counters populate.
         var el = document.getElementById("tileStatus");
         if (el) { el.hidden = true; el.textContent = ""; }
         renderTiles();
         updateAttributionFooter();
       }
+      function closeMapLayerDropdown() {
+        var pill = document.getElementById("mapLayerPill");
+        var dd = document.getElementById("mapLayerDropdown");
+        if (pill) pill.setAttribute("aria-expanded", "false");
+        if (dd) dd.hidden = true;
+      }
+      function openMapLayerDropdown() {
+        var pill = document.getElementById("mapLayerPill");
+        var dd = document.getElementById("mapLayerDropdown");
+        if (pill) pill.setAttribute("aria-expanded", "true");
+        if (dd) dd.hidden = false;
+      }
       function setupMapLayerPicker() {
-        var el = document.getElementById("mapLayerPicker");
-        if (!el) return;
-        el.addEventListener("click", function (e) {
+        var pill = document.getElementById("mapLayerPill");
+        var dd = document.getElementById("mapLayerDropdown");
+        if (!pill || !dd) return;
+        pill.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (pill.getAttribute("aria-expanded") === "true") closeMapLayerDropdown();
+          else openMapLayerDropdown();
+        });
+        dd.addEventListener("click", function (e) {
           var tgt = e.target && e.target.closest ? e.target.closest("[data-map-layer]") : null;
           if (!tgt) return;
           e.preventDefault();
           setMapLayer(tgt.getAttribute("data-map-layer"));
+          closeMapLayerDropdown();
+        });
+        document.addEventListener("click", function (e) {
+          if (pill.getAttribute("aria-expanded") !== "true") return;
+          if (e.target.closest && e.target.closest("#mapLayerControl")) return;
+          closeMapLayerDropdown();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && pill.getAttribute("aria-expanded") === "true") closeMapLayerDropdown();
         });
         syncMapLayerPicker();
       }
@@ -1989,14 +2018,46 @@
         footer.textContent = "Imagery © " + base + " · " + rest;
       }
 
+      function collapseLeadPill() {
+        var pill = document.getElementById("leadPill");
+        var trig = document.getElementById("leadPillTrigger");
+        if (pill) pill.setAttribute("data-state", "collapsed");
+        if (trig) trig.setAttribute("aria-expanded", "false");
+      }
+      function expandLeadPill() {
+        var pill = document.getElementById("leadPill");
+        var trig = document.getElementById("leadPillTrigger");
+        if (pill) pill.setAttribute("data-state", "expanded");
+        if (trig) trig.setAttribute("aria-expanded", "true");
+      }
       function setupLeadPicker() {
+        var pill = document.getElementById("leadPill");
+        var trig = document.getElementById("leadPillTrigger");
         var picker = document.getElementById("leadPicker");
-        if (!picker) return;
-        picker.addEventListener("click", function (e) {
-          var tgt = e.target && e.target.closest ? e.target.closest("[data-trend-min]") : null;
-          if (!tgt) return;
-          e.preventDefault();
-          setTrendMin(tgt.getAttribute("data-trend-min"));
+        if (picker) {
+          picker.addEventListener("click", function (e) {
+            var tgt = e.target && e.target.closest ? e.target.closest("[data-trend-min]") : null;
+            if (!tgt) return;
+            e.preventDefault();
+            setTrendMin(tgt.getAttribute("data-trend-min"));
+            collapseLeadPill();
+          });
+        }
+        if (trig) {
+          trig.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pill && pill.getAttribute("data-state") === "expanded") collapseLeadPill();
+            else expandLeadPill();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!pill || pill.getAttribute("data-state") !== "expanded") return;
+          if (e.target.closest && e.target.closest("#leadPill")) return;
+          collapseLeadPill();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && pill && pill.getAttribute("data-state") === "expanded") collapseLeadPill();
         });
         syncLeadPicker();
       }
