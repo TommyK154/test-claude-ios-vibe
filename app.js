@@ -1212,12 +1212,12 @@
             path.setAttribute("stroke-linejoin", "round");
             g.appendChild(path);
 
-            // Altitude chevrons — packed tight against the triangle's base so
-            // the whole marker reads as one unit. Dark outer + colored inner
-            // for contrast against satellite imagery.
+            // Altitude chevrons — packed flush with the triangle's trailing
+            // edge so the whole marker reads as one unit. Dark outer + colored
+            // inner for contrast against satellite imagery.
             var chevCount = altitudeChevronCount(p.altFt);
             for (var ci = 1; ci <= chevCount; ci++) {
-              var apexY = 3.2 + (ci * 1.4);
+              var apexY = 2.8 + (ci * 1.4);
               var pts = "-1.8," + (apexY + 0.9).toFixed(2) + " 0," + apexY.toFixed(2) + " 1.8," + (apexY + 0.9).toFixed(2);
               var chevShadow = document.createElementNS(svgns, "polyline");
               chevShadow.setAttribute("points", pts);
