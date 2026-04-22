@@ -293,8 +293,6 @@
         countdownTimer: null,
         nextFetchAt: 0,
         lastGeo: null,
-        showAir: true,
-        showSea: true,
         aisKey: null,
         aisSocket: null,
         aisReconnectTimer: null,
@@ -1603,24 +1601,22 @@
           { k: "name", label: "A–Z" }
         ];
         var parts = [];
-        if (state.showAir) {
-          parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">FILTER</span>' +
-            planeFilters.map(function (f) {
-              var active = state.listFilter === f.k ? " active" : "";
-              return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
-            }).join("") + '</div>');
-          // Altitude range: dual-thumb slider + readout. Two overlaid range
-          // inputs, a shared track behind, and a "fill" bar showing the
-          // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
-          parts.push(renderAltRangeRow());
-          parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
-            planeSorts.map(function (s) {
-              var active = state.listSort === s.k ? " active" : "";
-              var arrow = state.listSort === s.k ? (state.listSortDesc ? " ↓" : " ↑") : "";
-              return '<button class="chip' + active + '" data-k="' + s.k + '">' + s.label + arrow + '</button>';
-            }).join("") + '</div>');
-        }
-        if (state.showSea && state.aisKey) {
+        parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">FILTER</span>' +
+          planeFilters.map(function (f) {
+            var active = state.listFilter === f.k ? " active" : "";
+            return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
+          }).join("") + '</div>');
+        // Altitude range: dual-thumb slider + readout. Two overlaid range
+        // inputs, a shared track behind, and a "fill" bar showing the
+        // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
+        parts.push(renderAltRangeRow());
+        parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
+          planeSorts.map(function (s) {
+            var active = state.listSort === s.k ? " active" : "";
+            var arrow = state.listSort === s.k ? (state.listSortDesc ? " ↓" : " ↑") : "";
+            return '<button class="chip' + active + '" data-k="' + s.k + '">' + s.label + arrow + '</button>';
+          }).join("") + '</div>');
+        if (state.aisKey) {
           parts.push('<div class="chip-row" data-kind="ship-filter"><span class="chip-row-label">SEA</span>' +
             shipFilters.map(function (f) {
               var active = state.shipFilter === f.k ? " active" : "";
@@ -1741,16 +1737,16 @@
         if (!state.aisKey) {
           html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in settings to track vessels</div>';
         }
-        var allShips = state.showSea && state.aisKey ? shipsInRange() : [];
+        var allShips = state.aisKey ? shipsInRange() : [];
         var ships = allShips.filter(passesShipFilter).slice().sort(shipSortCmp);
-        var allPlanes = state.showAir ? state.planes.slice() : [];
+        var allPlanes = state.planes.slice();
         var planes = allPlanes.filter(passesPlaneFilter).sort(planeSortCmp);
         var totalContacts = planes.length + ships.length;
         // Header counts — "AIR · 87/146" shows filtered vs total so the
         // user sees at a glance how aggressive the current filter is.
         var countBits = [];
-        if (state.showAir) countBits.push("AIR · " + planes.length + "/" + allPlanes.length);
-        if (state.showSea && state.aisKey) countBits.push("SEA · " + ships.length + "/" + allShips.length);
+        countBits.push("AIR · " + planes.length + "/" + allPlanes.length);
+        if (state.aisKey) countBits.push("SEA · " + ships.length + "/" + allShips.length);
         if (countBits.length) html += '<div class="list-count">' + countBits.join("  ·  ") + '</div>';
         if (totalContacts === 0) {
           html += '<div class="empty">NO CONTACTS MATCH FILTER</div>';
@@ -3490,7 +3486,7 @@
         var shipLayer = document.getElementById("shipLayer");
         if (!shipLayer) return;
         shipLayer.innerHTML = "";
-        if (!state.showSea || !state.aisKey) return;
+        if (!state.aisKey) return;
         pruneShips();
         var ships = shipsInRange();
         var svgns = "http://www.w3.org/2000/svg";
