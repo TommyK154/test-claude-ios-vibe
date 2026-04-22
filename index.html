@@ -56,7 +56,7 @@
       <div class="airport-search">
         <div class="airport-input-row">
           <div class="airport-input-wrap">
-            <input type="search" id="airportInput" placeholder="Airport code or city (e.g. SFO, KLAX, London)" autocomplete="off" spellcheck="false" autocapitalize="characters">
+            <input type="search" id="airportInput" placeholder="ICAO, IATA or city (e.g. SFO, KSFO, San Francisco)" autocomplete="off" spellcheck="false" autocapitalize="characters">
             <button type="button" id="airportClear" class="apt-clear" hidden aria-label="Clear">×</button>
           </div>
           <button type="button" id="airportGo" class="apt-go">GO</button>
@@ -252,6 +252,7 @@
     <footer class="page-footer">Imagery © Esri, Maxar, Earthstar Geographics · Flight data: adsb.fi / adsb.lol / OpenSky · Photos: planespotters.net · Routes: adsbdb.com · AIS: aisstream.io</footer>
   </div>
 
+  <script async src="airports.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

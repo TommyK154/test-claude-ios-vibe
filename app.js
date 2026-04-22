@@ -26,7 +26,11 @@
         { id: "sin", label: "Singapore",     lat: 1.3644,  lon: 103.9915 }
       ];
 
-      var AIRPORTS = [
+      // Inline fallback — ~148 commercial airports. Used until airports.js
+      // lands (loaded async via a separate <script> tag). `getAirports()`
+      // below returns the fallback initially, then upgrades to the full
+      // ~7,700-entry OpenFlights dataset once `window.__airports` is set.
+      var AIRPORTS_FALLBACK = [
         {iata:"SFO",icao:"KSFO",name:"San Francisco Intl",city:"San Francisco",lat:37.6188,lon:-122.3754},
         {iata:"LAX",icao:"KLAX",name:"Los Angeles Intl",city:"Los Angeles",lat:33.9416,lon:-118.4085},
         {iata:"JFK",icao:"KJFK",name:"John F Kennedy Intl",city:"New York",lat:40.6413,lon:-73.7781},
@@ -176,6 +180,31 @@
         {iata:"BOG",icao:"SKBO",name:"El Dorado",city:"Bogotá",lat:4.7016,lon:-74.1469},
         {iata:"LIM",icao:"SPJC",name:"Jorge Chávez",city:"Lima",lat:-12.0219,lon:-77.1143}
       ];
+
+      // `window.__airports` is the compact array-of-arrays payload from
+      // airports.js (bundled OpenFlights, ~7,700 entries). We lazily convert
+      // it to the same object shape as the inline fallback and cache the
+      // result so the search + nearest-airport scan stay allocation-free
+      // per keystroke.
+      var __airportsFullCache = null;
+      function getAirports() {
+        if (__airportsFullCache) return __airportsFullCache;
+        var raw = (typeof window !== "undefined") ? window.__airports : null;
+        if (!raw || !raw.length) return AIRPORTS_FALLBACK;
+        var out = new Array(raw.length);
+        for (var i = 0; i < raw.length; i++) {
+          var r = raw[i];
+          out[i] = { iata: r[0] || "", icao: r[1] || "", name: r[2] || "", city: r[3] || "", country: r[4] || "", lat: r[5], lon: r[6] };
+        }
+        __airportsFullCache = out;
+        return out;
+      }
+      if (typeof window !== "undefined") {
+        window.addEventListener("airports-loaded", function () {
+          __airportsFullCache = null;          // force re-convert on next call
+          try { if (typeof updateTacReadout === "function") updateTacReadout(); } catch (e) {}
+        });
+      }
 
       function adsbFiDirect(lat, lon, nm) {
         return "https://opendata.adsb.fi/api/v2/point/" + lat + "/" + lon + "/" + nm;
@@ -1129,15 +1158,37 @@
         return { x: dxNm * scale, y: -dyNm * scale };
       }
 
+      // Nearest-airport lookup over the full dataset. Returns { apt, distNm }
+      // for the closest airport, or null if the dataset is still loading and
+      // nothing within maxNm is in the fallback list.
+      function nearestAirport(lat, lon, maxNm) {
+        var list = getAirports();
+        if (!list.length) return null;
+        var best = null, bestD = Infinity;
+        for (var i = 0; i < list.length; i++) {
+          var a = list[i];
+          if (!isFinite(a.lat) || !isFinite(a.lon)) continue;
+          var d = haversineNm(lat, lon, a.lat, a.lon);
+          if (d < bestD) { bestD = d; best = a; }
+        }
+        if (!best) return null;
+        if (maxNm != null && bestD > maxNm) return null;
+        return { apt: best, distNm: bestD };
+      }
+
       function updateTacReadout() {
         var tr = document.getElementById("tacReadout");
         if (!tr) return;
-        var label = (state.center.label || "—").toString().toUpperCase();
-        var latStr = state.center.lat.toFixed(3);
-        var lonStr = state.center.lon.toFixed(3);
         var shipCount = Object.keys(state.ships || {}).length;
         var contactLine = state.planes.length + (state.aisKey ? " / " + shipCount : "");
-        tr.textContent = label + " · " + latStr + "," + lonStr + " · " + state.rangeNm + "NM · " + contactLine;
+        var near = nearestAirport(state.center.lat, state.center.lon, 50);
+        var head;
+        if (near) {
+          head = "NEAREST: " + (near.apt.iata || near.apt.icao);
+        } else {
+          head = "OPEN WATER";
+        }
+        tr.textContent = head + " · " + state.rangeNm + " NM · " + contactLine + " CONTACTS";
       }
 
       // Records a render miss for the selected plane with a reason code and
@@ -2544,16 +2595,20 @@
           // "SFO · San Francisco Intl" — extract the leading code token.
           var sepIdx = q.indexOf(" · ");
           if (sepIdx > 0) q = q.substring(0, sepIdx);
-          var exactIata = [], exactIcao = [], prefixCode = [], prefixText = [];
-          for (var i = 0; i < AIRPORTS.length; i++) {
-            var a = AIRPORTS[i];
-            if (a.iata === q) exactIata.push(a);
-            else if (a.icao === q) exactIcao.push(a);
-            else if (a.iata.indexOf(q) === 0 || a.icao.indexOf(q) === 0) prefixCode.push(a);
-            else if (a.city.toUpperCase().indexOf(q) !== -1 || a.name.toUpperCase().indexOf(q) !== -1) prefixText.push(a);
-            if (exactIata.length + exactIcao.length + prefixCode.length + prefixText.length > 40) break;
+          var list = getAirports();
+          var exactIata = [], exactIcao = [], prefixIata = [], prefixIcao = [], prefixCity = [], substr = [];
+          for (var i = 0; i < list.length; i++) {
+            var a = list[i];
+            if (a.iata && a.iata === q) exactIata.push(a);
+            else if (a.icao && a.icao === q) exactIcao.push(a);
+            else if (a.iata && a.iata.indexOf(q) === 0) prefixIata.push(a);
+            else if (a.icao && a.icao.indexOf(q) === 0) prefixIcao.push(a);
+            else if (a.city && a.city.toUpperCase().indexOf(q) === 0) prefixCity.push(a);
+            else if ((a.city && a.city.toUpperCase().indexOf(q) !== -1) || (a.name && a.name.toUpperCase().indexOf(q) !== -1)) substr.push(a);
+            var tot = exactIata.length + exactIcao.length + prefixIata.length + prefixIcao.length + prefixCity.length + substr.length;
+            if (tot > 40) break;
           }
-          return exactIata.concat(exactIcao).concat(prefixCode).concat(prefixText).slice(0, 8);
+          return exactIata.concat(exactIcao, prefixIata, prefixIcao, prefixCity, substr).slice(0, 8);
         }
 
         function render(matches) {
@@ -2569,9 +2624,11 @@
           var html = "";
           for (var i = 0; i < matches.length; i++) {
             var a = matches[i];
-            html += '<div class="apt-item" data-icao="' + escapeHtml(a.icao) + '">' +
-              '<span class="apt-code">' + escapeHtml(a.iata) + '</span>' +
-              '<span class="apt-name">' + escapeHtml(a.city) + ' · ' + escapeHtml(a.name) + '</span>' +
+            var code = a.iata || a.icao || "—";
+            var rest = (a.city || "") + (a.city && a.name ? " · " : "") + (a.name || "");
+            html += '<div class="apt-item" data-iata="' + escapeHtml(a.iata || "") + '" data-icao="' + escapeHtml(a.icao || "") + '">' +
+              '<span class="apt-code">' + escapeHtml(code) + '</span>' +
+              '<span class="apt-name">' + escapeHtml(rest) + '</span>' +
               '</div>';
           }
           dropdown.innerHTML = html;
@@ -2580,16 +2637,20 @@
           for (var j = 0; j < items.length; j++) {
             (function (el) {
               el.addEventListener("click", function () {
-                var icao = el.dataset.icao;
+                var iata = el.dataset.iata || "";
+                var icao = el.dataset.icao || "";
+                var list = getAirports();
                 var apt = null;
-                for (var k = 0; k < AIRPORTS.length; k++) {
-                  if (AIRPORTS[k].icao === icao) { apt = AIRPORTS[k]; break; }
+                for (var k = 0; k < list.length; k++) {
+                  var cand = list[k];
+                  if ((iata && cand.iata === iata) || (icao && cand.icao === icao)) { apt = cand; break; }
                 }
                 if (!apt) return;
-                state.center = { lat: apt.lat, lon: apt.lon, label: apt.iata, id: apt.icao };
+                var label = apt.iata || apt.icao;
+                state.center = { lat: apt.lat, lon: apt.lon, label: label, id: apt.icao || apt.iata };
                 syncCoordInputs();
                 markActivePreset();
-                input.value = apt.iata + " · " + apt.city;
+                input.value = label + (apt.city ? " · " + apt.city : "");
                 dropdown.hidden = true;
                 onCenterChanged();
               });
