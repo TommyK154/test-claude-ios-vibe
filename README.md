@@ -6,6 +6,22 @@ AIS vessel traffic, rendered over real satellite imagery. Three source files
 
 Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 
+## Development workflow
+
+- `main` is the stable, public-facing branch. Visitors always see `main`.
+- Feature work happens on short-lived branches (`feat/*`, `fix/*`, `chore/*`)
+  opened as pull requests.
+- Every open PR automatically gets its own live preview URL at
+  `.../pr-preview/pr-N/`, posted as a comment on the PR by
+  `github-actions[bot]`. Review on a phone before merging.
+- Preview deploys show a sticky green `PREVIEW DEPLOY · PR #N`
+  banner at the top of the page so preview content can never be
+  confused with production.
+- The deploy pipeline lives in `.github/workflows/pages.yml`. Both main
+  and previews publish to the `gh-pages` branch (main at root,
+  previews at `pr-preview/pr-N/`). Pages source: `gh-pages` branch,
+  `/ (root)`.
+
 ## Features
 
 ### Map & interaction
