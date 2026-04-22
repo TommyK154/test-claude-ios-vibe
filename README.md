@@ -116,10 +116,6 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 - PR #11: off-box selected plane renders as an edge chevron with
   callsign + bearing/distance so the user never loses their selection
   when panning away.
-- PR #11: `COPY DIAGNOSTIC` button in the settings panel writes a
-  compact JSON snapshot of session state (center, range, active source,
-  selected contact + sampled track, AIS counters) to the clipboard for
-  bug reports. `aisstream.io` API key is never included.
 
 ## Known Issues (open)
 

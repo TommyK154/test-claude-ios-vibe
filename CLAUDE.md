@@ -249,50 +249,21 @@ data; the concentric rings are pure distance references (no clip-path).
 - Loiter detection is explicitly **deferred to a future PR** — needs
   threshold tuning against real holding patterns. See README "Future Work".
 
-## Diagnostics
-
-- **`COPY DIAGNOSTIC` button** in the settings panel snapshots session state
-  to the clipboard as JSON. Used for bug reports — pasted output includes
-  viewport, range, active fetch source / cadence, last fetch & error, plane &
-  ship counts, list filter/sort state, `trendMin`, selected contact with
-  sampled track (first 10 + last 10 points), **`selectedRoute`** (raw
-  `state.routes[callsign]` entry for verifying adsbdb.com responses against
-  rendered output), `selectedMissLog`, and AIS bbox + message counters. When
-  a user reports a bug, ask them to paste the diagnostic rather than describe
-  symptoms — it's the ground truth.
-- **Privacy rules for the diagnostic payload** — the app is public on GitHub,
-  so bug reports must not leak personal fingerprint:
-  - `navigator.userAgent` is **never** included (OS + browser + device
-    fingerprint).
-  - `state.center.lat` / `state.center.lon` and `ais.bbox` coords are
-    **rounded to 3 decimals** (≈370 ft / 0.06 NM). Enough to identify
-    neighborhood / metro area for debugging, not enough to identify a home.
-  - `state.aisKey` is **never** included.
-  - Plane / ship positions in track samples stay at full precision — they're
-    public aviation / maritime data, not the user's location.
-  - When adding new fields to `copyDiagnostic`, audit them against this list.
-    Err on the side of omitting anything device- or location-specific.
-
 ## Known Issues / In-flight investigations
 
 - **AIS end-to-end**: PR #10 fixed bbox-doesn't-update-on-center-change.
-  PR #18 widened catch rate (dropped `FilterMessageTypes`, added 30 NM bbox
-  floor, actionable no-frames status). PR #19 added the **Test Key** button
-  in the settings panel — short-lived second WebSocket that subscribes to
-  Singapore Strait (~100 msg/sec baseline) using the user's key.
-  This is now the **first-line diagnostic** when a user reports "no ships":
-    - ✓ frames in 15 s → key works; local water is just quiet. Tell the
-      user to pan to a busy port or accept the quiet area.
-    - ✗ error frames → key / account rejected by aisstream. The error
-      text (e.g. `API KEY IS NOT VALID`) is surfaced in the result strip.
-      Fix is on aisstream's side — regenerate the key or contact support.
-    - ⚠ 0 frames, 0 errors → socket accepted but silent. Account is
-      most likely not fully provisioned (free-tier activation quirk). Fix
-      is also on aisstream's side.
-  When a user reports no ships, have them click Test Key first before
-  digging into code. The probe runs independently of the main
-  subscription; both sockets coexist and `state.aisProbe` clears on
-  completion or key change.
+  PR #18 widened catch rate (dropped `FilterMessageTypes`, added 30 NM
+  bbox floor, actionable no-frames status messages via
+  `scheduleNoTrafficWarning`). After PR #18, if a busy port still reads
+  `msgs 0` (the `renderAisDiag` strip shows the bbox matches the map and
+  no error frames are arriving), the problem is on aisstream's side —
+  most commonly a free-tier account that hasn't been fully provisioned
+  for streaming, even though the dashboard reports the key as `Valid:
+  True`. Symptoms: WebSocket cycles between `WAITING FOR TRAFFIC` and
+  `DISCONNECTED · RETRYING`, `msgTypes` stays empty, and the server
+  drops the idle session after a timeout. Fix path is on aisstream:
+  regenerate the key from their dashboard, wait 24–48 h for activation,
+  or open an issue at github.com/aisstream/issues.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,
