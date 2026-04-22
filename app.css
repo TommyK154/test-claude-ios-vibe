@@ -442,24 +442,6 @@
       position: relative;
       overflow: hidden;
     }
-    .recenter-btn {
-      display: block;
-      width: 100%;
-      margin-bottom: 8px;
-      min-height: 40px;
-      padding: 10px 12px;
-      background: var(--accent-soft);
-      border: 1px solid var(--accent-dim);
-      color: var(--accent);
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.16em;
-      border-radius: 4px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .recenter-btn:active { background: var(--accent); color: #0a1018; }
     .radar-svg {
       width: 100%;
       height: auto;
@@ -977,6 +959,98 @@
       color: var(--accent);
       border-color: var(--accent);
     }
+
+    /* Dual-thumb altitude range slider. Two overlapped <input type="range">
+       elements with transparent tracks; a shared track + a fill bar
+       positioned between the thumbs give the dual-range visual. Input
+       bodies are pointer-events:none so only the thumbs respond to touch
+       (prevents the full-width invisible track from eating radar taps). */
+    .alt-range-row { gap: 8px; }
+    .alt-range-row .chip-row-label.alt-label-active,
+    .alt-range-row.active .chip-row-label { color: var(--accent); }
+    .alt-range {
+      position: relative;
+      flex: 1;
+      height: 32px;
+      min-width: 120px;
+    }
+    .alt-range-track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 4px;
+      transform: translateY(-50%);
+      background: var(--border-2);
+      border-radius: 2px;
+    }
+    .alt-range-fill {
+      position: absolute;
+      top: 50%;
+      height: 4px;
+      transform: translateY(-50%);
+      background: var(--accent);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .alt-range-input {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      width: 100%;
+      height: 32px;
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .alt-range-input::-webkit-slider-runnable-track {
+      background: transparent;
+      height: 32px;
+      border: none;
+    }
+    .alt-range-input::-moz-range-track {
+      background: transparent;
+      height: 32px;
+      border: none;
+    }
+    .alt-range-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+      pointer-events: auto;
+      margin-top: 0;
+    }
+    .alt-range-input::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .alt-range-readout {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      min-width: 70px;
+      text-align: right;
+    }
+    .alt-range-row.active .alt-range-readout { color: var(--accent); }
+
     .list-count {
       font-family: var(--mono);
       font-size: 10px;

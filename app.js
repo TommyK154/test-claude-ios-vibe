@@ -267,6 +267,10 @@
         listFilter: "all",        // "all" | "air" | "ground" | "mil" | "notable" | "emerg"
         listSort: "dist",         // "dist" | "alt" | "spd" | "call"
         listSortDesc: false,
+        // Altitude range filter (ft) — applies to the radar AND the list,
+        // stacked with the filter chip. Default 0 / ALT_MAX_FT = "off".
+        altMinFt: 0,
+        altMaxFt: 50000,          // also the slider ceiling; planes > 50k pass when at max
         shipFilter: "all",        // "all" | "underway" | "anchored" | "distress"
         shipSort: "dist",         // "dist" | "spd" | "name"
         shipSortDesc: false
@@ -276,6 +280,10 @@
         state.listFilter = localStorage.getItem("list.filter") || "all";
         state.listSort = localStorage.getItem("list.sort") || "dist";
         state.listSortDesc = localStorage.getItem("list.sortDesc") === "1";
+        var storedMin = parseInt(localStorage.getItem("list.altMin"), 10);
+        var storedMax = parseInt(localStorage.getItem("list.altMax"), 10);
+        if (isFinite(storedMin) && storedMin >= 0 && storedMin <= 50000) state.altMinFt = storedMin;
+        if (isFinite(storedMax) && storedMax >= 0 && storedMax <= 50000 && storedMax >= state.altMinFt) state.altMaxFt = storedMax;
         state.shipFilter = localStorage.getItem("list.shipFilter") || "all";
         state.shipSort = localStorage.getItem("list.shipSort") || "dist";
         state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
@@ -1028,18 +1036,6 @@
         var shipCount = Object.keys(state.ships || {}).length;
         var contactLine = state.planes.length + (state.aisKey ? " / " + shipCount : "");
         tr.textContent = label + " · " + latStr + "," + lonStr + " · " + state.rangeNm + "NM · " + contactLine;
-        updateRecenterBtn();
-      }
-
-      function updateRecenterBtn() {
-        var btn = document.getElementById("recenterBtn");
-        if (!btn) return;
-        if (state.lastGeo && (state.center.id !== "me" || state.center.id === "custom")) {
-          var dist = Math.abs(state.lastGeo.lat - state.center.lat) + Math.abs(state.lastGeo.lon - state.center.lon);
-          btn.hidden = dist < 0.01;
-        } else {
-          btn.hidden = true;
-        }
       }
 
       // Records a render miss for the selected plane with a reason code and
@@ -1283,15 +1279,30 @@
       // the active filter so the card↔list link never feels broken.
       function passesPlaneFilter(p) {
         if (p.hex && p.hex === state.selectedHex) return true;
+        // Chip filter.
+        var okChip;
         switch (state.listFilter) {
-          case "all":     return true;
-          case "air":     return !p.onGround;
-          case "ground":  return !!p.onGround;
-          case "mil":     return !!(state.military && state.military[p.hex]);
-          case "notable": return !!matchNotableCallsign(p.callsign);
-          case "emerg":   return p.squawk === "7500" || p.squawk === "7600" || p.squawk === "7700";
-          default:        return true;
+          case "all":     okChip = true; break;
+          case "air":     okChip = !p.onGround; break;
+          case "ground":  okChip = !!p.onGround; break;
+          case "mil":     okChip = !!(state.military && state.military[p.hex]); break;
+          case "notable": okChip = !!matchNotableCallsign(p.callsign); break;
+          case "emerg":   okChip = p.squawk === "7500" || p.squawk === "7600" || p.squawk === "7700"; break;
+          default:        okChip = true;
         }
+        if (!okChip) return false;
+        // Altitude range filter (stacked). Skip when at default extremes.
+        // Airborne planes with missing altitude always pass (null altFt
+        // shouldn't vanish the marker — user can narrow chip to GROUND
+        // if they want to exclude unknowns). Ground planes always pass
+        // so the ALT slider doesn't conflict with the GROUND chip.
+        if (p.onGround) return true;
+        var altDefault = state.altMinFt === 0 && state.altMaxFt >= 50000;
+        if (altDefault) return true;
+        if (p.altFt == null || !isFinite(p.altFt)) return true;
+        // altMax at 50000 means "no upper bound" — planes above 50k still pass.
+        var upperOk = state.altMaxFt >= 50000 ? true : p.altFt <= state.altMaxFt;
+        return p.altFt >= state.altMinFt && upperOk;
       }
       function planeSortCmp(a, b) {
         var dir = state.listSortDesc ? -1 : 1;
@@ -1400,6 +1411,10 @@
               var active = state.listFilter === f.k ? " active" : "";
               return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
             }).join("") + '</div>');
+          // Altitude range: dual-thumb slider + readout. Two overlaid range
+          // inputs, a shared track behind, and a "fill" bar showing the
+          // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
+          parts.push(renderAltRangeRow());
           parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
             planeSorts.map(function (s) {
               var active = state.listSort === s.k ? " active" : "";
@@ -1433,10 +1448,93 @@
             });
           });
         });
+        wireAltRangeSlider();
+      }
+
+      // Formats a ft value as a short "Xk" label. 0 stays "0", non-1000s get
+      // one decimal (unused in practice since slider step is 500).
+      function formatAltK(ft) {
+        if (ft === 0) return "0";
+        if (ft % 1000 === 0) return (ft / 1000) + "k";
+        return (ft / 1000).toFixed(1) + "k";
+      }
+      function formatAltRangeText() {
+        var lo = state.altMinFt, hi = state.altMaxFt;
+        if (lo === 0 && hi >= 50000) return "ALL";
+        if (lo === 0) return "≤ " + formatAltK(hi) + " ft";
+        if (hi >= 50000) return "≥ " + formatAltK(lo) + " ft";
+        return formatAltK(lo) + "–" + formatAltK(hi) + " ft";
+      }
+      function renderAltRangeRow() {
+        var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
+        return '<div class="chip-row alt-range-row' + (active ? " active" : "") + '" data-kind="plane-alt-range">' +
+          '<span class="chip-row-label">ALT</span>' +
+          '<div class="alt-range">' +
+            '<div class="alt-range-track"></div>' +
+            '<div class="alt-range-fill" id="altRangeFill"></div>' +
+            '<input type="range" class="alt-range-input alt-range-min" id="altMinInput" min="0" max="50000" step="500" value="' + state.altMinFt + '" aria-label="Minimum altitude in feet" />' +
+            '<input type="range" class="alt-range-input alt-range-max" id="altMaxInput" min="0" max="50000" step="500" value="' + state.altMaxFt + '" aria-label="Maximum altitude in feet" />' +
+          '</div>' +
+          '<span class="alt-range-readout" id="altRangeReadout">' + formatAltRangeText() + '</span>' +
+        '</div>';
+      }
+      function updateAltRangeUi() {
+        var fill = document.getElementById("altRangeFill");
+        var readout = document.getElementById("altRangeReadout");
+        var row = document.querySelector('[data-kind="plane-alt-range"]');
+        if (fill) {
+          var loPct = state.altMinFt / 50000 * 100;
+          var hiPct = state.altMaxFt / 50000 * 100;
+          fill.style.left = loPct.toFixed(2) + "%";
+          fill.style.width = Math.max(0, hiPct - loPct).toFixed(2) + "%";
+        }
+        if (readout) readout.textContent = formatAltRangeText();
+        if (row) {
+          var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
+          row.classList.toggle("active", active);
+        }
+      }
+      function wireAltRangeSlider() {
+        var altMin = document.getElementById("altMinInput");
+        var altMax = document.getElementById("altMaxInput");
+        if (!altMin || !altMax) return;
+        var STEP = 500;
+        function onInput(e) {
+          var lo = parseInt(altMin.value, 10);
+          var hi = parseInt(altMax.value, 10);
+          // Prevent crossover: if thumbs would cross, push the passive one
+          // one step ahead of the dragged one (keeps a 500 ft minimum band).
+          if (lo > hi - STEP) {
+            if (e.target === altMin) { lo = hi - STEP; altMin.value = lo; }
+            else { hi = lo + STEP; altMax.value = hi; }
+          }
+          state.altMinFt = Math.max(0, lo);
+          state.altMaxFt = Math.min(50000, hi);
+          try {
+            localStorage.setItem("list.altMin", String(state.altMinFt));
+            localStorage.setItem("list.altMax", String(state.altMaxFt));
+          } catch (err) {}
+          updateAltRangeUi();
+          renderRadar();
+          renderListEntries();
+        }
+        altMin.addEventListener("input", onInput);
+        altMax.addEventListener("input", onInput);
+        // Apply initial fill-bar position once the DOM exists.
+        updateAltRangeUi();
       }
 
       function renderList() {
         renderListControls();
+        renderListEntries();
+      }
+
+      // Renders just the list rows (planes + ships) into #listContainer,
+      // leaving #listControls alone. Used by the altitude range slider
+      // which must keep its inputs alive across drag events — rebuilding
+      // the controls mid-drag replaces the input elements and the browser
+      // aborts the drag.
+      function renderListEntries() {
         var html = "";
         if (!state.aisKey) {
           html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in settings to track vessels</div>';
@@ -1697,22 +1795,24 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Returns the TREND segmented picker rendered inline on the plane
+      // Returns the LEAD segmented picker rendered inline on the plane
       // card — three buttons (1 / 2 / 5 MIN) with the active value
       // highlighted. Tap any button to jump directly to that length (no
-      // cycling). Replaces the older single cycle-chip where the user had
-      // to tap up to 3 times and couldn't see the other options.
+      // cycling). "LEAD" (aviation/weapons term for a projected intercept
+      // position) was chosen over "TREND" because it doesn't confuse with
+      // the TRAIL (actual flown path) and reads more directly as "where
+      // will the plane be N minutes from now".
       function renderControlChips() {
         var tm = state.trendMin || 5;
         var options = [1, 2, 5];
         var buttons = options.map(function (m) {
           var active = (m === tm) ? " active" : "";
           return '<button type="button" class="sel-trend-btn' + active +
-            '" data-trend-min="' + m + '" aria-label="Trend ' + m + ' min"' +
+            '" data-trend-min="' + m + '" aria-label="Lead ' + m + ' min"' +
             (active ? ' aria-pressed="true"' : '') + '>' + m + '</button>';
         }).join("");
-        return '<div class="sel-trend-seg" role="group" aria-label="Trend projection length">' +
-          '<span class="sel-trend-label">TREND</span>' +
+        return '<div class="sel-trend-seg" role="group" aria-label="Lead projection length">' +
+          '<span class="sel-trend-label">LEAD</span>' +
           buttons +
           '<span class="sel-trend-unit">MIN</span>' +
         '</div>';
@@ -2988,27 +3088,6 @@
         return NAV_STATUS_TEXT[n];
       }
 
-      function setupRecenterBtn() {
-        var btn = document.getElementById("recenterBtn");
-        if (!btn) return;
-        btn.addEventListener("click", function () {
-          if (state.lastGeo) {
-            state.center = {
-              lat: state.lastGeo.lat,
-              lon: state.lastGeo.lon,
-              label: "Current",
-              id: "me"
-            };
-            syncCoordInputs();
-            markActivePreset();
-            renderTiles();
-            fetchNow();
-          } else {
-            useGeolocation();
-          }
-        });
-      }
-
       function initGeo() {
         renderTiles();
         var declined = false;
@@ -3117,7 +3196,6 @@
       buildPresets();
       setupAirportSearch();
       setupRadarDrag();
-      setupRecenterBtn();
       setupSettings();
       // Collapsible controls panel
       (function () {
