@@ -132,6 +132,32 @@ both. When editing:
 `state.planes` as a secondary defence. Trail / route / trend vector are
 never drawn for `lastSelectedPlane` — deselect strips overlays by design.
 
+### Altitude shape vs interest color (two-channel rule)
+
+The plane marker encodes two independent axes using two different
+visual channels, so they never collide:
+
+- **Shape (chevron count) = altitude band.** `altitudeChevronCount(altFt)`
+  returns 0 (< 10k) to 4 (≥ 40k). The renderer stacks that many
+  sergeant-rank chevrons behind the triangle, in the plane's own color.
+  Chevrons rotate with the triangle so they always trail in the
+  heading direction. `onGround` planes render as a small circle with
+  zero chevrons; altitude semantics don't apply when stationary.
+- **Color (fill) = interest.** Default airborne = `--plane` (cyan).
+  Selected = `--plane-selected` (gold) + gold halo + white stroke.
+  Emergency squawk = red + pulsing red halo. Military (in
+  `state.military`) = orange fill. Ground = `--plane-ground` (gray).
+  These overrides stay on fill only — chevrons inherit the same color
+  so the whole marker reads as one unit.
+
+**Never shove a new category into the fill channel without asking
+whether it belongs in the shape channel instead.** The palette is
+split so that altitude lives on shape-count and interest lives on
+color. If you add a new state (e.g. "spoofed position" or "loitering"),
+pick the channel deliberately. A new altitude semantic → extend the
+chevron-count bands. A new interest semantic → use a halo, stroke, or
+small accent element, not the fill color of the triangle.
+
 ### Motion ticker (dead reckoning)
 
 `deadReckonTick` runs at 1 Hz and advances every plane / ship's *display*

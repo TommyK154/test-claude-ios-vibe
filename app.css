@@ -170,31 +170,6 @@
     }
     .ais-diag-hint { margin-top: 6px !important; font-size: 11px; }
 
-    .mode-toggle {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-      margin-bottom: 14px;
-    }
-    .mode-btn {
-      min-height: 40px;
-      padding: 0;
-      border: 1px solid var(--border-2);
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.18em;
-      border-radius: 4px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .mode-btn.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #0a1018;
-    }
     .ships-hint {
       background: var(--surface);
       border: 1px dashed var(--border-2);
@@ -687,6 +662,52 @@
       color: var(--accent);
     }
 
+    /* TREND segmented picker — three pill buttons bookended by "TREND … MIN"
+       labels. Replaces the single cycle chip so the three options are
+       visible at once and one tap selects directly. Each button keeps a
+       44 CSS px tap target via an expanded ::before hit region. */
+    .sel-trend-seg {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: var(--surface-2);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+    }
+    .sel-trend-label, .sel-trend-unit {
+      color: var(--muted);
+    }
+    .sel-trend-btn {
+      position: relative;
+      min-width: 22px;
+      padding: 4px 6px;
+      border: 1px solid var(--border-2);
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-weight: inherit;
+      font-size: inherit;
+      letter-spacing: inherit;
+      border-radius: 3px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sel-trend-btn::before {
+      content: "";
+      position: absolute;
+      inset: -10px -4px;
+    }
+    .sel-trend-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0a1018;
+    }
+
     .legend {
       margin: 8px 0 16px;
       display: flex;
@@ -769,6 +790,30 @@
       color: var(--muted);
     }
     .legend-body .lg-v { color: var(--text); font-size: 12px; }
+    .legend-body .lg-alt-row { align-items: flex-start; }
+    .legend-body .lg-alt-samples {
+      display: flex;
+      flex: 1;
+      justify-content: space-between;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .legend-body .lg-alt-sample {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+    }
+    .legend-body .lg-alt-sample svg { display: block; }
+    .legend-body .lg-alt-sample span {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      white-space: nowrap;
+    }
     .sel-route {
       display: flex;
       align-items: center;
