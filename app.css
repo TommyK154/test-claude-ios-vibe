@@ -556,13 +556,6 @@
       flex: 0 0 auto;
     }
     .sel-top-row .loading-row { flex: 1; min-width: 0; }
-    /* LEAD picker sits on its own row right-aligned, directly below the ✕
-       so the two controls stack in the right column. */
-    .sel-controls-row {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 6px;
-    }
     .sel-head-row {
       display: flex;
       align-items: center;
