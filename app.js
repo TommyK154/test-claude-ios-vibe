@@ -15,6 +15,8 @@
         banner.hidden = false;
       })();
 
+      // ==================== PRESETS · AIRPORTS ====================
+
       var PRESETS = [
         { id: "sfo", label: "San Francisco", lat: 37.6188, lon: -122.3754 },
         { id: "lax", label: "Los Angeles",   lat: 33.9416, lon: -118.4085 },
@@ -206,6 +208,8 @@
         });
       }
 
+      // ==================== API SOURCES · REFRESH CADENCE ====================
+
       function adsbFiDirect(lat, lon, nm) {
         return "https://opendata.adsb.fi/api/v2/point/" + lat + "/" + lon + "/" + nm;
       }
@@ -250,6 +254,8 @@
       }
       var NM_TO_KM = 1.852;
 
+      // ==================== STATE · HELPERS · UI BUILDERS ====================
+
       var state = {
         center: { lat: PRESETS[0].lat, lon: PRESETS[0].lon, label: PRESETS[0].label, id: PRESETS[0].id },
         rangeNm: 50,
@@ -287,8 +293,6 @@
         countdownTimer: null,
         nextFetchAt: 0,
         lastGeo: null,
-        showAir: true,
-        showSea: true,
         aisKey: null,
         aisSocket: null,
         aisReconnectTimer: null,
@@ -545,6 +549,8 @@
         return (R * c) / NM_TO_KM;
       }
 
+
+      // ==================== NORMALIZERS · FETCH · TRACKS · OVERLAYS ====================
 
       function normalizeReadsb(raw) {
         var arr = (raw && (raw.ac || raw.aircraft)) || [];
@@ -992,6 +998,8 @@
         r3lbl.textContent = Math.round(r * 0.75) + " NM";
       }
 
+      // ==================== TILES · MAP LAYERS · PROJECTION ====================
+
       function computeTileZoom(lat, rangeNm) {
         var rangeMeters = rangeNm * 1852 * 2;
         var radarPx = 200;
@@ -1257,6 +1265,8 @@
         if (altFt < 40000) return 3;  // typical airliner cruise
         return 4;                      // long-haul / bizjet / military
       }
+
+      // ==================== RADAR · LIST · SELECTED CARD ====================
 
       function renderRadar() {
         radarCount.textContent = state.planes.length;
@@ -1591,24 +1601,22 @@
           { k: "name", label: "A–Z" }
         ];
         var parts = [];
-        if (state.showAir) {
-          parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">FILTER</span>' +
-            planeFilters.map(function (f) {
-              var active = state.listFilter === f.k ? " active" : "";
-              return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
-            }).join("") + '</div>');
-          // Altitude range: dual-thumb slider + readout. Two overlaid range
-          // inputs, a shared track behind, and a "fill" bar showing the
-          // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
-          parts.push(renderAltRangeRow());
-          parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
-            planeSorts.map(function (s) {
-              var active = state.listSort === s.k ? " active" : "";
-              var arrow = state.listSort === s.k ? (state.listSortDesc ? " ↓" : " ↑") : "";
-              return '<button class="chip' + active + '" data-k="' + s.k + '">' + s.label + arrow + '</button>';
-            }).join("") + '</div>');
-        }
-        if (state.showSea && state.aisKey) {
+        parts.push('<div class="chip-row" data-kind="plane-filter"><span class="chip-row-label">FILTER</span>' +
+          planeFilters.map(function (f) {
+            var active = state.listFilter === f.k ? " active" : "";
+            return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
+          }).join("") + '</div>');
+        // Altitude range: dual-thumb slider + readout. Two overlaid range
+        // inputs, a shared track behind, and a "fill" bar showing the
+        // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
+        parts.push(renderAltRangeRow());
+        parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
+          planeSorts.map(function (s) {
+            var active = state.listSort === s.k ? " active" : "";
+            var arrow = state.listSort === s.k ? (state.listSortDesc ? " ↓" : " ↑") : "";
+            return '<button class="chip' + active + '" data-k="' + s.k + '">' + s.label + arrow + '</button>';
+          }).join("") + '</div>');
+        if (state.aisKey) {
           parts.push('<div class="chip-row" data-kind="ship-filter"><span class="chip-row-label">SEA</span>' +
             shipFilters.map(function (f) {
               var active = state.shipFilter === f.k ? " active" : "";
@@ -1729,16 +1737,16 @@
         if (!state.aisKey) {
           html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in settings to track vessels</div>';
         }
-        var allShips = state.showSea && state.aisKey ? shipsInRange() : [];
+        var allShips = state.aisKey ? shipsInRange() : [];
         var ships = allShips.filter(passesShipFilter).slice().sort(shipSortCmp);
-        var allPlanes = state.showAir ? state.planes.slice() : [];
+        var allPlanes = state.planes.slice();
         var planes = allPlanes.filter(passesPlaneFilter).sort(planeSortCmp);
         var totalContacts = planes.length + ships.length;
         // Header counts — "AIR · 87/146" shows filtered vs total so the
         // user sees at a glance how aggressive the current filter is.
         var countBits = [];
-        if (state.showAir) countBits.push("AIR · " + planes.length + "/" + allPlanes.length);
-        if (state.showSea && state.aisKey) countBits.push("SEA · " + ships.length + "/" + allShips.length);
+        countBits.push("AIR · " + planes.length + "/" + allPlanes.length);
+        if (state.aisKey) countBits.push("SEA · " + ships.length + "/" + allShips.length);
         if (countBits.length) html += '<div class="list-count">' + countBits.join("  ·  ") + '</div>';
         if (totalContacts === 0) {
           html += '<div class="empty">NO CONTACTS MATCH FILTER</div>';
@@ -2237,6 +2245,8 @@
         }).catch(function () { return tryPhotoUrls(urls, idx + 1); });
       }
 
+      // ==================== SELECTION · POLLING · NOTABLE ====================
+
       function selectPlane(hex) {
         if (!hex) return;
         if (state.selectedHex === hex) { deselectAll(); return; }
@@ -2550,6 +2560,8 @@
         }).catch(function () { /* ignore — retry on next tick */ });
       }
 
+      // ==================== APP LIFECYCLE · RANGE · AIRPORT SEARCH ====================
+
       function renderAll() {
         renderRadar();
         renderShips();
@@ -2853,6 +2865,8 @@
         });
       }
 
+      // ==================== GESTURE · RADAR DRAG · PINCH ====================
+
       function setupRadarDrag() {
         var svg = document.getElementById("radar");
         if (!svg) return;
@@ -3148,6 +3162,8 @@
           resetAll();
         });
       }
+
+      // ==================== SETTINGS · AIS · SHIPS · BOOT ====================
 
       function setupSettings() {
         var btn = document.getElementById("settingsBtn");
@@ -3470,7 +3486,7 @@
         var shipLayer = document.getElementById("shipLayer");
         if (!shipLayer) return;
         shipLayer.innerHTML = "";
-        if (!state.showSea || !state.aisKey) return;
+        if (!state.aisKey) return;
         pruneShips();
         var ships = shipsInRange();
         var svgns = "http://www.w3.org/2000/svg";
