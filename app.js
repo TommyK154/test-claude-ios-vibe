@@ -1076,7 +1076,11 @@
         if (allFailed || someFailed) {
           el.hidden = false;
           el.className = "tile-status err";
-          var url = s.lastError ? " · " + s.lastError.replace(/^https?:\/\//, "").slice(0, 60) : "";
+          // Strip protocol + hostname so the path (z/x/y) is visible at a
+          // glance — "/tms/v1.0/sec/12/658/1584.png" is the diagnostically
+          // useful part, not the hostname (which the layer name already
+          // implies).
+          var url = s.lastError ? " · " + s.lastError.replace(/^https?:\/\/[^/]+/, "") : "";
           el.textContent = (s.layer.toUpperCase() + " TILES FAILED · 0 OF " + s.requested + " LOADED" + url);
         } else if (pending > 0) {
           el.hidden = false;
@@ -1143,6 +1147,12 @@
           img.setAttribute("preserveAspectRatio", "xMidYMid slice");
           img.setAttributeNS(xlinkns, "href", url);
           img.setAttribute("href", url);
+          // Suppress the Referer header on tile requests. ChartBundle (and
+          // many free tile hosts) use hotlink protection that 403s requests
+          // carrying a github.io referer; "no-referrer" drops the header
+          // entirely so the tile loads as an unattributed image fetch.
+          // Harmless for satellite/label tiles that don't check referers.
+          img.setAttribute("referrerpolicy", "no-referrer");
           img.setAttribute("image-rendering", "optimizeQuality");
           tileLoadState.requested += 1;
           img.addEventListener("load", function () {
