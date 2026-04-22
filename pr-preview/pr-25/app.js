@@ -1216,13 +1216,13 @@
             path.setAttribute("stroke-linejoin", "round");
             g.appendChild(path);
 
-            // Altitude chevrons — stacked behind the triangle, pointing the
-            // same direction as the plane. Dark outer + colored inner for
-            // contrast against satellite imagery at small scale.
+            // Altitude chevrons — stacked tight against the triangle's base
+            // so the whole marker reads as one unit in cluttered airspace.
+            // Dark outer + colored inner for contrast against satellite imagery.
             var chevCount = altitudeChevronCount(p.altFt);
             for (var ci = 1; ci <= chevCount; ci++) {
-              var apexY = 5.5 + (ci * 2.2);
-              var pts = "-2.4," + (apexY + 1.3).toFixed(2) + " 0," + apexY.toFixed(2) + " 2.4," + (apexY + 1.3).toFixed(2);
+              var apexY = 3.0 + (ci * 1.8);
+              var pts = "-2.0," + (apexY + 1.1).toFixed(2) + " 0," + apexY.toFixed(2) + " 2.0," + (apexY + 1.1).toFixed(2);
               var chevShadow = document.createElementNS(svgns, "polyline");
               chevShadow.setAttribute("points", pts);
               chevShadow.setAttribute("fill", "none");
@@ -1357,6 +1357,12 @@
         }
         renderListControls();
         renderList();
+        // Filters now affect which planes/ships are drawn on the radar
+        // (see passesPlaneFilter / passesShipFilter applied in the render
+        // loops). Re-render the radar immediately so the chip tap feels
+        // responsive; without this, the user waits up to 10 s for the
+        // next bulk fetch before the change shows on the map.
+        if (key === "filter" || key === "shipFilter") renderRadar();
       }
 
       function renderListControls() {
