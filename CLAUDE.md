@@ -275,13 +275,24 @@ data; the concentric rings are pure distance references (no clip-path).
 
 ## Known Issues / In-flight investigations
 
-- **AIS end-to-end**: PR #10 fixed the bbox-doesn't-update-on-center-change
-  bug that was the most likely cause of the "no ships appear" symptom.
-  If a busy port still reads `msgs 0` after PR #10 (the bbox diagnostic
-  matches the map but no traffic arrives), the problem is on aisstream's
-  side — key tier, verification, or the subscription-frame format — not
-  in our code. Log the diagnostic state from the settings panel and move
-  to investigate the account rather than the client.
+- **AIS end-to-end**: PR #10 fixed bbox-doesn't-update-on-center-change.
+  PR #18 widened catch rate (dropped `FilterMessageTypes`, added 30 NM bbox
+  floor, actionable no-frames status). PR #19 added the **Test Key** button
+  in the settings panel — short-lived second WebSocket that subscribes to
+  Singapore Strait (~100 msg/sec baseline) using the user's key.
+  This is now the **first-line diagnostic** when a user reports "no ships":
+    - ✓ frames in 15 s → key works; local water is just quiet. Tell the
+      user to pan to a busy port or accept the quiet area.
+    - ✗ error frames → key / account rejected by aisstream. The error
+      text (e.g. `API KEY IS NOT VALID`) is surfaced in the result strip.
+      Fix is on aisstream's side — regenerate the key or contact support.
+    - ⚠ 0 frames, 0 errors → socket accepted but silent. Account is
+      most likely not fully provisioned (free-tier activation quirk). Fix
+      is also on aisstream's side.
+  When a user reports no ships, have them click Test Key first before
+  digging into code. The probe runs independently of the main
+  subscription; both sockets coexist and `state.aisProbe` clears on
+  completion or key change.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,

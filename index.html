@@ -39,6 +39,11 @@
           <button type="button" id="aisKeyClear" class="btn-danger" hidden>CLEAR</button>
         </div>
         <div id="aisStatus" class="ais-status"></div>
+        <div class="ais-probe-row">
+          <button type="button" id="aisProbeBtn" class="btn-secondary">TEST KEY</button>
+          <span class="setting-help ais-probe-hint">Runs a 15 s subscription to Singapore Strait (guaranteed-busy shipping lane) using your key. Proves whether the key works independent of the water around your current map center.</span>
+        </div>
+        <div id="aisProbeResult" class="ais-status" hidden></div>
         <div id="aisDiag" class="ais-diag" hidden></div>
         <p class="setting-help ais-diag-hint">If you see messages flowing but no ship markers, the subscribed bounding box may not match your map center — pan to a busy port (e.g. Rotterdam, Singapore, Houston) and wait ~30 s. aisstream's free tier only streams the bbox you subscribed to.</p>
       </div>

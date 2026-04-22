@@ -249,6 +249,7 @@
         aisSocket: null,
         aisReconnectTimer: null,
         aisReconnectAttempts: 0,
+        aisProbe: null,          // transient: { socket, startedAt, msgCount, errorCount, lastError, timer } while a Test Key probe is running
         // Contact-list filter + sort state, persisted in localStorage.
         listFilter: "all",        // "all" | "air" | "ground" | "mil" | "notable" | "emerg"
         listSort: "dist",         // "dist" | "alt" | "spd" | "call"
@@ -2574,10 +2575,21 @@
           state.aisKey = null;
           try { localStorage.removeItem("aisstream.key"); } catch (e) {}
           disconnectAisStream();
+          if (state.aisProbe) {
+            if (state.aisProbe.timer) clearTimeout(state.aisProbe.timer);
+            try { if (state.aisProbe.socket) state.aisProbe.socket.close(); } catch (e) {}
+            state.aisProbe = null;
+            var probeResultEl = document.getElementById("aisProbeResult");
+            if (probeResultEl) { probeResultEl.hidden = true; probeResultEl.textContent = ""; }
+            var probeBtnEl = document.getElementById("aisProbeBtn");
+            if (probeBtnEl) { probeBtnEl.disabled = false; probeBtnEl.textContent = "TEST KEY"; }
+          }
           state.ships = {};
           refreshUi();
           renderRadar(); renderList();
         });
+        var probeBtn = document.getElementById("aisProbeBtn");
+        if (probeBtn) probeBtn.addEventListener("click", runAisTestProbe);
         refreshUi();
       }
 
@@ -2935,6 +2947,90 @@
                     bb[1][0].toFixed(2) + "," + bb[1][1].toFixed(2), "ok");
           renderAisDiag();
         } catch (e) {}
+      }
+
+      // Test Probe: short-lived second WebSocket that subscribes to a known
+      // high-traffic bbox (Singapore Strait — baseline ~100 msg/sec on free
+      // tier) using the user's key. Independent of state.aisSocket and the
+      // user's map center. Distinguishes three cases:
+      //   ✓ frames received   → key works, main subscription's area just quiet
+      //   ✗ error frames      → key / account rejected, error text surfaced
+      //   ⚠ silent (0 / 0)    → socket accepted but account not provisioned
+      var PROBE_BBOX = [[1.15, 103.50], [1.45, 104.20]];
+      var PROBE_DURATION_MS = 15000;
+
+      function runAisTestProbe() {
+        if (!state.aisKey) return;
+        if (state.aisProbe) return;
+        var resultEl = document.getElementById("aisProbeResult");
+        var btn = document.getElementById("aisProbeBtn");
+        if (btn) { btn.disabled = true; btn.textContent = "TESTING…"; }
+        if (resultEl) {
+          resultEl.hidden = false;
+          resultEl.className = "ais-status";
+          resultEl.textContent = "Opening probe…";
+        }
+        var probe = { socket: null, startedAt: Date.now(), msgCount: 0, errorCount: 0, lastError: "", timer: null };
+        state.aisProbe = probe;
+        try {
+          var ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
+          probe.socket = ws;
+          ws.addEventListener("open", function () {
+            try {
+              ws.send(JSON.stringify({
+                APIKey: state.aisKey,
+                BoundingBoxes: [[PROBE_BBOX[0], PROBE_BBOX[1]]]
+              }));
+            } catch (err) { probe.lastError = (err && err.message) || "subscribe failed"; }
+            if (resultEl) resultEl.textContent = "Probe subscribed to Singapore Strait · counting for 15 s…";
+          });
+          ws.addEventListener("message", function (e) {
+            try {
+              var msg = JSON.parse(e.data);
+              var mt = (msg && (msg.MessageType || msg.messageType || "")).toString();
+              if (mt && mt.toLowerCase() === "error") {
+                probe.errorCount += 1;
+                probe.lastError = msg.Error || msg.error || msg.message || "unknown";
+              } else {
+                probe.msgCount += 1;
+              }
+            } catch (err) {}
+          });
+          ws.addEventListener("error", function () {
+            probe.lastError = probe.lastError || "websocket error";
+          });
+          probe.timer = setTimeout(finishProbe, PROBE_DURATION_MS);
+        } catch (err) {
+          probe.lastError = (err && err.message) || "probe failed to open";
+          finishProbe();
+        }
+      }
+
+      function finishProbe() {
+        var probe = state.aisProbe;
+        if (!probe) return;
+        if (probe.timer) { clearTimeout(probe.timer); probe.timer = null; }
+        try { if (probe.socket) probe.socket.close(); } catch (e) {}
+        var resultEl = document.getElementById("aisProbeResult");
+        var btn = document.getElementById("aisProbeBtn");
+        if (btn) { btn.disabled = false; btn.textContent = "TEST KEY"; }
+        if (resultEl) {
+          if (probe.errorCount > 0) {
+            resultEl.className = "ais-status err";
+            resultEl.textContent = "✗ Key rejected (" + probe.errorCount + " error frame" +
+              (probe.errorCount === 1 ? "" : "s") + "): " + String(probe.lastError).toUpperCase() +
+              " · regenerate at aisstream.io/apikeys or contact support";
+          } else if (probe.msgCount > 0) {
+            resultEl.className = "ais-status ok";
+            resultEl.textContent = "✓ " + probe.msgCount + " frames in 15 s · your key works. " +
+              "If your local map still shows no ships, the water around your current center is genuinely quiet — pan to a busy port to confirm.";
+          } else {
+            resultEl.className = "ais-status warn";
+            resultEl.textContent = "⚠ 0 frames, 0 errors · connection accepted but silent. " +
+              "Most likely the aisstream account is not fully provisioned yet — check aisstream.io or try regenerating the key.";
+          }
+        }
+        state.aisProbe = null;
       }
 
       function pruneShips() {
