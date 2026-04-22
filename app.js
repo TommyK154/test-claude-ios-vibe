@@ -1212,13 +1212,13 @@
             path.setAttribute("stroke-linejoin", "round");
             g.appendChild(path);
 
-            // Altitude chevrons — stacked tight against the triangle's base
-            // so the whole marker reads as one unit in cluttered airspace.
-            // Dark outer + colored inner for contrast against satellite imagery.
+            // Altitude chevrons — packed tight against the triangle's base so
+            // the whole marker reads as one unit. Dark outer + colored inner
+            // for contrast against satellite imagery.
             var chevCount = altitudeChevronCount(p.altFt);
             for (var ci = 1; ci <= chevCount; ci++) {
-              var apexY = 3.0 + (ci * 1.8);
-              var pts = "-2.0," + (apexY + 1.1).toFixed(2) + " 0," + apexY.toFixed(2) + " 2.0," + (apexY + 1.1).toFixed(2);
+              var apexY = 3.2 + (ci * 1.4);
+              var pts = "-1.8," + (apexY + 0.9).toFixed(2) + " 0," + apexY.toFixed(2) + " 1.8," + (apexY + 0.9).toFixed(2);
               var chevShadow = document.createElementNS(svgns, "polyline");
               chevShadow.setAttribute("points", pts);
               chevShadow.setAttribute("fill", "none");
@@ -1451,19 +1451,21 @@
         wireAltRangeSlider();
       }
 
-      // Formats a ft value as a short "Xk" label. 0 stays "0", non-1000s get
-      // one decimal (unused in practice since slider step is 500).
-      function formatAltK(ft) {
-        if (ft === 0) return "0";
-        if (ft % 1000 === 0) return (ft / 1000) + "k";
-        return (ft / 1000).toFixed(1) + "k";
+      // Formats a ft value as an aviation flight level ("FL080" for 8,000 ft,
+      // "FL380" for 38,000 ft). Hundreds of feet, zero-padded to 3 digits.
+      // Matches ATC/pilot vocabulary better than "8k ft" on a flight radar.
+      function formatFL(ft) {
+        var fl = Math.round(ft / 100);
+        var s = String(fl);
+        while (s.length < 3) s = "0" + s;
+        return "FL" + s;
       }
       function formatAltRangeText() {
         var lo = state.altMinFt, hi = state.altMaxFt;
         if (lo === 0 && hi >= 50000) return "ALL";
-        if (lo === 0) return "≤ " + formatAltK(hi) + " ft";
-        if (hi >= 50000) return "≥ " + formatAltK(lo) + " ft";
-        return formatAltK(lo) + "–" + formatAltK(hi) + " ft";
+        if (lo === 0) return "≤ " + formatFL(hi);
+        if (hi >= 50000) return "≥ " + formatFL(lo);
+        return formatFL(lo) + "–" + formatFL(hi);
       }
       function renderAltRangeRow() {
         var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
