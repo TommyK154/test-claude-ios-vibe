@@ -340,10 +340,10 @@
           var tgt = e.target && e.target.closest ? e.target : null;
           var btn = tgt && tgt.closest(".sel-close");
           if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); return; }
-          var chip = tgt && tgt.closest("[data-chip]");
-          if (chip) {
+          var trendBtn = tgt && tgt.closest("[data-trend-min]");
+          if (trendBtn) {
             e.preventDefault(); e.stopPropagation();
-            if (chip.getAttribute("data-chip") === "trend") cycleTrendMin();
+            setTrendMin(trendBtn.getAttribute("data-trend-min"));
           }
         });
       }
@@ -1062,6 +1062,20 @@
         }, 2050);
       }
 
+      // Altitude band -> chevron count (sergeant-rank pattern behind the
+      // triangle). Shape is the altitude channel; plane color stays the
+      // interest channel (default / selected / military / emergency / ground).
+      // Bands chosen at 10k intervals so typical airliner cruise (FL300+) sits
+      // in the 3-chevron band, readily distinguishable from regional cruise.
+      function altitudeChevronCount(altFt) {
+        if (typeof altFt !== "number" || !isFinite(altFt)) return 0;
+        if (altFt < 10000) return 0;  // approach / departure / GA
+        if (altFt < 20000) return 1;  // low IFR, GA cruise
+        if (altFt < 30000) return 2;  // regional cruise
+        if (altFt < 40000) return 3;  // typical airliner cruise
+        return 4;                      // long-haul / bizjet / military
+      }
+
       function renderRadar() {
         radarCount.textContent = state.planes.length;
         updateTacReadout();
@@ -1093,6 +1107,12 @@
         }
 
         planes.forEach(function (p) {
+          // List filter also applies to the radar: hide planes that the
+          // current filter chip rejects. The selected plane is always kept
+          // (passesPlaneFilter short-circuits to true for selectedHex) so
+          // the card↔map link never breaks when a filter would otherwise
+          // hide the selection.
+          if (!passesPlaneFilter(p)) return;
           var isSelForMiss = p.hex && p.hex === state.selectedHex;
           if (isSelForMiss && (!isFinite(p.lat) || !isFinite(p.lon))) {
             recordSelectedMiss("latlon.nonFinite", { lat: p.lat, lon: p.lon, baseLat: p.baseLat, baseLon: p.baseLon, baseAt: p.baseAt });
@@ -1195,6 +1215,31 @@
             path.setAttribute("stroke-width", isSel ? "0.6" : "0.5");
             path.setAttribute("stroke-linejoin", "round");
             g.appendChild(path);
+
+            // Altitude chevrons — stacked tight against the triangle's base
+            // so the whole marker reads as one unit in cluttered airspace.
+            // Dark outer + colored inner for contrast against satellite imagery.
+            var chevCount = altitudeChevronCount(p.altFt);
+            for (var ci = 1; ci <= chevCount; ci++) {
+              var apexY = 3.0 + (ci * 1.8);
+              var pts = "-2.0," + (apexY + 1.1).toFixed(2) + " 0," + apexY.toFixed(2) + " 2.0," + (apexY + 1.1).toFixed(2);
+              var chevShadow = document.createElementNS(svgns, "polyline");
+              chevShadow.setAttribute("points", pts);
+              chevShadow.setAttribute("fill", "none");
+              chevShadow.setAttribute("stroke", "rgba(7,12,21,0.95)");
+              chevShadow.setAttribute("stroke-width", "1.4");
+              chevShadow.setAttribute("stroke-linecap", "round");
+              chevShadow.setAttribute("stroke-linejoin", "round");
+              g.appendChild(chevShadow);
+              var chev = document.createElementNS(svgns, "polyline");
+              chev.setAttribute("points", pts);
+              chev.setAttribute("fill", "none");
+              chev.setAttribute("stroke", color);
+              chev.setAttribute("stroke-width", "0.7");
+              chev.setAttribute("stroke-linecap", "round");
+              chev.setAttribute("stroke-linejoin", "round");
+              g.appendChild(chev);
+            }
           }
 
           if (isEmergency) {
@@ -1312,6 +1357,12 @@
         }
         renderListControls();
         renderList();
+        // Filters now affect which planes/ships are drawn on the radar
+        // (see passesPlaneFilter / passesShipFilter applied in the render
+        // loops). Re-render the radar immediately so the chip tap feels
+        // responsive; without this, the user waits up to 10 s for the
+        // next bulk fetch before the change shows on the map.
+        if (key === "filter" || key === "shipFilter") renderRadar();
       }
 
       function renderListControls() {
@@ -1646,24 +1697,35 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Returns the TREND length chip rendered inline in the plane card's
-      // sel-head row (right side, next to the callsign). Tapping it cycles
-      // 5 → 2 → 1 → 5. Ships don't emit this in this PR; the sel-head row
-      // layout accommodates them for a future ship-trend picker.
+      // Returns the TREND segmented picker rendered inline on the plane
+      // card — three buttons (1 / 2 / 5 MIN) with the active value
+      // highlighted. Tap any button to jump directly to that length (no
+      // cycling). Replaces the older single cycle-chip where the user had
+      // to tap up to 3 times and couldn't see the other options.
       function renderControlChips() {
         var tm = state.trendMin || 5;
-        return '<button type="button" class="sel-chip sel-chip-inline" data-chip="trend" aria-label="Cycle trend length">' +
-          'TREND · ' + tm + ' MIN' +
-        '</button>';
+        var options = [1, 2, 5];
+        var buttons = options.map(function (m) {
+          var active = (m === tm) ? " active" : "";
+          return '<button type="button" class="sel-trend-btn' + active +
+            '" data-trend-min="' + m + '" aria-label="Trend ' + m + ' min"' +
+            (active ? ' aria-pressed="true"' : '') + '>' + m + '</button>';
+        }).join("");
+        return '<div class="sel-trend-seg" role="group" aria-label="Trend projection length">' +
+          '<span class="sel-trend-label">TREND</span>' +
+          buttons +
+          '<span class="sel-trend-unit">MIN</span>' +
+        '</div>';
       }
 
-      // Called when the TREND chip is tapped: cycles 5 → 2 → 1 → 5 and persists.
-      function cycleTrendMin() {
-        var order = [5, 2, 1];
-        var cur = state.trendMin || 5;
-        var idx = order.indexOf(cur);
-        state.trendMin = order[(idx + 1) % order.length];
-        try { localStorage.setItem("trend.minutes", String(state.trendMin)); } catch (e) {}
+      // Called when any TREND segmented button is tapped. Jumps directly
+      // to the requested length (1, 2, or 5 min) and persists.
+      function setTrendMin(n) {
+        var v = parseInt(n, 10);
+        if (v !== 1 && v !== 2 && v !== 5) return;
+        if (state.trendMin === v) return;
+        state.trendMin = v;
+        try { localStorage.setItem("trend.minutes", String(v)); } catch (e) {}
         renderOverlays();
         renderSelected();
       }
@@ -2567,7 +2629,6 @@
             statusEl.textContent = "NO KEY · SHIP TRACKING DISABLED";
             statusEl.className = "ais-status";
           }
-          updateModeToggleVisibility();
           updateShipsHint();
         }
         btn.addEventListener("click", function () {
@@ -2593,30 +2654,8 @@
         refreshUi();
       }
 
-      function updateModeToggleVisibility() {
-        var t = document.getElementById("modeToggle");
-        if (t) t.hidden = !state.aisKey;
-      }
-
       function updateShipsHint() {
         // rendered inline in renderList
-      }
-
-      function setupModeToggle() {
-        var toggle = document.getElementById("modeToggle");
-        if (!toggle) return;
-        var btns = toggle.querySelectorAll(".mode-btn");
-        for (var i = 0; i < btns.length; i++) {
-          (function (b) {
-            b.addEventListener("click", function () {
-              var mode = b.dataset.mode;
-              for (var j = 0; j < btns.length; j++) btns[j].classList.toggle("active", btns[j] === b);
-              state.showAir = mode === "both" || mode === "air";
-              state.showSea = mode === "both" || mode === "sea";
-              renderRadar(); renderList();
-            });
-          })(btns[i]);
-        }
       }
 
       // AIS (aisstream.io) WebSocket
@@ -2896,6 +2935,9 @@
         var ships = shipsInRange();
         var svgns = "http://www.w3.org/2000/svg";
         ships.forEach(function (s) {
+          // Ship filter chip also applies to the radar, matching the plane
+          // filter behaviour. Selected ship is kept by passesShipFilter.
+          if (!passesShipFilter(s)) return;
           var pt = project({ lat: s.lat, lon: s.lon });
           if (!isFinite(pt.x) || !isFinite(pt.y)) return;
           var g = document.createElementNS(svgns, "g");
@@ -3077,7 +3119,6 @@
       setupRadarDrag();
       setupRecenterBtn();
       setupSettings();
-      setupModeToggle();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");
