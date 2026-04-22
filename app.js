@@ -273,7 +273,11 @@
         altMaxFt: 50000,          // also the slider ceiling; planes > 50k pass when at max
         shipFilter: "all",        // "all" | "underway" | "anchored" | "distress"
         shipSort: "dist",         // "dist" | "spd" | "name"
-        shipSortDesc: false
+        shipSortDesc: false,
+        // Base map tile source. Satellite default; VFR/IFR charts are
+        // opt-in via the settings-panel picker. US-only for non-satellite
+        // layers (ChartBundle serves FAA public-domain charts).
+        mapLayer: "satellite"     // "satellite" | "sectional" | "ifr-low" | "ifr-high"
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
       try {
@@ -287,6 +291,11 @@
         state.shipFilter = localStorage.getItem("list.shipFilter") || "all";
         state.shipSort = localStorage.getItem("list.shipSort") || "dist";
         state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
+        var storedLayer = localStorage.getItem("map.layer");
+        if (storedLayer === "satellite" || storedLayer === "sectional" ||
+            storedLayer === "ifr-low" || storedLayer === "ifr-high") {
+          state.mapLayer = storedLayer;
+        }
       } catch (e) {}
       state.military = {};  // hex -> true for military aircraft
 
@@ -935,6 +944,51 @@
         return Math.min(18, Math.max(3, Math.round(z) + hd));
       }
 
+      // Available base-map layers. Satellite is the global default; VFR and
+      // IFR chart layers are served by ChartBundle.com (FAA public-domain
+      // tiles, US-only, CORS-clean, no API key). The URL builders live here
+      // so renderTiles can swap sources without reshaping its loop. Labels
+      // are only overlaid for satellite — the aeronautical charts have
+      // airports / airspace / fixes already baked into the tile.
+      var IMAGERY_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
+      var LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
+      function chartBundleUrl(layer, z, x, y) {
+        return "https://wms.chartbundle.com/tms/v1.0/" + layer + "/" + z + "/" + x + "/" + y + ".png?type=google";
+      }
+      var MAP_LAYERS = {
+        "satellite": {
+          label: "Satellite",
+          url: function (z, x, y) { return IMAGERY_URL + z + "/" + y + "/" + x; },
+          maxZoom: 18,
+          hasLabels: true,
+          attribution: "Esri, Maxar, Earthstar Geographics"
+        },
+        "sectional": {
+          label: "VFR Sectional",
+          url: function (z, x, y) { return chartBundleUrl("sec", z, x, y); },
+          maxZoom: 12,
+          hasLabels: false,
+          attribution: "VFR charts © ChartBundle.com · FAA public domain · US only"
+        },
+        "ifr-low": {
+          label: "IFR Low",
+          url: function (z, x, y) { return chartBundleUrl("enrl", z, x, y); },
+          maxZoom: 11,
+          hasLabels: false,
+          attribution: "IFR low enroute © ChartBundle.com · FAA public domain · US only"
+        },
+        "ifr-high": {
+          label: "IFR High",
+          url: function (z, x, y) { return chartBundleUrl("enrh", z, x, y); },
+          maxZoom: 11,
+          hasLabels: false,
+          attribution: "IFR high enroute © ChartBundle.com · FAA public domain · US only"
+        }
+      };
+      function currentMapLayer() {
+        return MAP_LAYERS[state.mapLayer] || MAP_LAYERS.satellite;
+      }
+
       function renderTiles() {
         var tileLayer = document.getElementById("tileLayer");
         var labelLayer = document.getElementById("labelLayer");
@@ -942,7 +996,10 @@
         tileLayer.innerHTML = "";
         if (labelLayer) labelLayer.innerHTML = "";
         var center = state.center;
-        var z = computeTileZoom(center.lat, state.rangeNm);
+        var layer = currentMapLayer();
+        // Chart layers (VFR / IFR) top out lower than satellite; clamp so
+        // we don't request tiles ChartBundle will 404 on.
+        var z = Math.min(layer.maxZoom, computeTileZoom(center.lat, state.rangeNm));
         var n = Math.pow(2, z);
         var latRad = center.lat * Math.PI / 180;
         var centerTileX = (center.lon + 180) / 360 * n;
@@ -961,8 +1018,6 @@
         var halfGrid = Math.min(8, Math.ceil((140 + tileSize / 2) / tileSize));
         var svgns = "http://www.w3.org/2000/svg";
         var xlinkns = "http://www.w3.org/1999/xlink";
-        var IMAGERY = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
-        var LABELS = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
 
         function placeTile(parent, url, rx, ry, size) {
           var img = document.createElementNS(svgns, "image");
@@ -998,9 +1053,10 @@
             // a vignette masking the corners.
             if (rx + tileSize < -110 || rx > 110 || ry + tileSize < -110 || ry > 110) continue;
 
-            var suffix = z + "/" + ty + "/" + wrappedTx;
-            placeTile(tileLayer, IMAGERY + suffix, rx, ry, tileSize);
-            if (labelLayer) placeTile(labelLayer, LABELS + suffix, rx, ry, tileSize);
+            placeTile(tileLayer, layer.url(z, wrappedTx, ty), rx, ry, tileSize);
+            if (labelLayer && layer.hasLabels) {
+              placeTile(labelLayer, LABELS_URL + z + "/" + ty + "/" + wrappedTx, rx, ry, tileSize);
+            }
           }
         }
       }
@@ -1709,7 +1765,7 @@
         var alertsHtml = "";
         var sq2 = sq.toString();
         var emLabel = sq2 === "7500" ? "HIJACK" : sq2 === "7600" ? "RADIO FAIL" : sq2 === "7700" ? "EMERGENCY" : "";
-        if (emLabel) alertsHtml += '<div class="sel-alert emerg">⚠ ' + emLabel + ' · SQUAWK ' + sq2 + '</div>';
+        if (emLabel) alertsHtml += '<div class="sel-alert emerg">⚠ ' + emLabel + ' · SQUAWK ' + escapeHtml(sq2) + '</div>';
         if (state.military && state.military[hexLower]) alertsHtml += '<div class="sel-alert mil">MIL · TRACKED AS MILITARY</div>';
         var notable = callsign ? matchNotableCallsign(callsign) : null;
         if (notable) {
@@ -1828,6 +1884,54 @@
         syncLeadPicker();
         renderOverlays();
         renderSelected();
+      }
+
+      // Map-layer picker — 4 buttons in the settings panel switch between
+      // satellite (default) and VFR / IFR-low / IFR-high chart layers. Click
+      // handler swaps state.mapLayer, persists, and re-renders tiles. Active
+      // button stays in sync via syncMapLayerPicker() on init and after every
+      // set call.
+      function syncMapLayerPicker() {
+        var el = document.getElementById("mapLayerPicker");
+        if (!el) return;
+        var btns = el.querySelectorAll("[data-map-layer]");
+        for (var i = 0; i < btns.length; i++) {
+          var isActive = btns[i].getAttribute("data-map-layer") === state.mapLayer;
+          btns[i].classList.toggle("active", isActive);
+          if (isActive) btns[i].setAttribute("aria-pressed", "true");
+          else btns[i].removeAttribute("aria-pressed");
+        }
+      }
+      function setMapLayer(v) {
+        if (!MAP_LAYERS[v]) return;
+        if (state.mapLayer === v) return;
+        state.mapLayer = v;
+        try { localStorage.setItem("map.layer", v); } catch (e) {}
+        syncMapLayerPicker();
+        renderTiles();
+        updateAttributionFooter();
+      }
+      function setupMapLayerPicker() {
+        var el = document.getElementById("mapLayerPicker");
+        if (!el) return;
+        el.addEventListener("click", function (e) {
+          var tgt = e.target && e.target.closest ? e.target.closest("[data-map-layer]") : null;
+          if (!tgt) return;
+          e.preventDefault();
+          setMapLayer(tgt.getAttribute("data-map-layer"));
+        });
+        syncMapLayerPicker();
+      }
+
+      // Attribution footer updates to reflect the active base-map source so
+      // we stay compliant with ESRI / ChartBundle / FAA attribution terms.
+      function updateAttributionFooter() {
+        var footer = document.querySelector(".page-footer");
+        if (!footer) return;
+        var layer = currentMapLayer();
+        var base = layer.attribution;
+        var rest = "Flight data: adsb.fi / adsb.lol / OpenSky · Photos: planespotters.net · Routes: adsbdb.com · AIS: aisstream.io";
+        footer.textContent = "Imagery © " + base + " · " + rest;
       }
 
       function setupLeadPicker() {
@@ -3210,6 +3314,8 @@
       setupRadarDrag();
       setupSettings();
       setupLeadPicker();
+      setupMapLayerPicker();
+      updateAttributionFooter();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");

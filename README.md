@@ -184,16 +184,43 @@ Ordered roughly by likely ship sequence.
   in a background tab.
 
 ### Refactor follow-ups (from PR #17 three-file split)
-- **Further JS subdivision** — split `app.js` into `state.js` / `fetch.js`
-  / `render.js` / `gesture.js` / `ais.js`. Requires picking a module
-  pattern (ES modules via `<script type="module">` vs. shared-namespace
-  IIFE). Separate PR because it changes evaluation semantics.
+- **Further JS subdivision** — split `app.js` (~3,300 lines) into
+  purpose-scoped modules. Proposed shape from the PR #27 code-review
+  pass:
+    - `state.js` — the top-level `state` object, localStorage hydration,
+      PRESETS / AIRPORTS constants (~300 lines)
+    - `fetch.js` — all external API adapters: ADS-B bulk + fast-poll,
+      OpenSky tracks, adsbdb callsign + operator, planespotters photos,
+      adsb.fi /mil, AIS WebSocket plumbing (~700 lines)
+    - `render.js` — `renderRadar`, `renderTiles`, `renderList`,
+      `renderSelected`, `renderOverlays`, plus chevron / filter / legend
+      plumbing (~1,400 lines)
+    - `gesture.js` — `setupRadarDrag` + all pointer-event state machine
+      (~400 lines)
+    - `setup.js` — init sequence, settings panel wiring, map-layer /
+      LEAD picker click handlers (~500 lines)
+  Needs picking a module pattern — ES modules via
+  `<script type="module">` would be cleanest but requires CORS
+  adjustments on any file:// usage; shared-namespace IIFE
+  (`window.__radar = {...}`) works without module support. Separate PR
+  because it changes evaluation semantics.
 - **Content-Security-Policy `<meta>` tag** — defense-in-depth against
-  injection. Needs careful testing against every fetch origin
-  (adsb.fi, adsb.lol, opensky-network, corsproxy.io, allorigins, ESRI
-  tiles, aisstream, planespotters, adsbdb).
-- **Dead-code sweep** — post-refactor, now that the file layout has
-  settled, spot and remove any unused helpers.
+  injection. Starter policy given current external origins:
+    - `default-src 'self'`
+    - `connect-src 'self' opendata.adsb.fi api.adsb.lol
+      opensky-network.org api.adsbdb.com api.planespotters.net
+      corsproxy.io api.allorigins.win stream.aisstream.io`
+    - `img-src 'self' data: server.arcgisonline.com
+      wms.chartbundle.com api.planespotters.net api.adsbdb.com`
+    - `style-src 'self' 'unsafe-inline'` (inline styles used for
+      swatch colors + dynamic slider fill position)
+    - `script-src 'self'`
+  Needs end-to-end testing against every fetch origin before landing.
+- **Dead-code sweep** — `state.selectedMissLog` push sites at
+  app.js:~1037/1514/1757/1792 are now inert after COPY DIAGNOSTIC was
+  removed in PR #20. Safe to delete. Also worth auditing `state.showAir` /
+  `state.showSea` readers now that the BOTH|AIR|SEA toggle is gone
+  (PR #25) — both always true in practice.
 
 ## Technical
 

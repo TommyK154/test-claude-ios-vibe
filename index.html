@@ -33,6 +33,16 @@
     <div id="settingsPanel" class="settings-panel" hidden>
       <h3>Settings</h3>
       <div class="setting-block">
+        <label>Map layer</label>
+        <p class="setting-help">Satellite is the global default. VFR Sectional and IFR Low/High enroute charts are US-only (<a href="https://chartbundle.com/" target="_blank" rel="noopener">ChartBundle.com</a>, FAA public domain). Switching layer replaces the base map; aircraft, ships and overlays stay on top.</p>
+        <div class="map-layer-picker" id="mapLayerPicker" role="group" aria-label="Base map layer">
+          <button type="button" class="map-layer-btn" data-map-layer="satellite">Satellite</button>
+          <button type="button" class="map-layer-btn" data-map-layer="sectional">VFR</button>
+          <button type="button" class="map-layer-btn" data-map-layer="ifr-low">IFR Low</button>
+          <button type="button" class="map-layer-btn" data-map-layer="ifr-high">IFR High</button>
+        </div>
+      </div>
+      <div class="setting-block">
         <label for="aisKeyInput">aisstream.io API key <span class="muted">(required for ship tracking)</span></label>
         <p class="setting-help">Ship tracking uses <a href="https://aisstream.io/apikeys" target="_blank" rel="noopener">aisstream.io</a>. Sign up (free, ~30 seconds), copy your key, and paste it here. The key is stored only in your browser (localStorage) and is only used to connect to aisstream directly.</p>
         <div class="setting-row">
@@ -156,7 +166,7 @@
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
                 <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
               </svg>
-              <span>&lt; 10k</span>
+              <span>&lt; 10k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -164,7 +174,7 @@
                 <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>10–20k</span>
+              <span>10–20k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -174,7 +184,7 @@
                 <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>20–30k</span>
+              <span>20–30k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -186,7 +196,7 @@
                 <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>30–40k</span>
+              <span>30–40k ft</span>
             </div>
             <div class="lg-alt-sample">
               <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
@@ -200,7 +210,7 @@
                 <polyline points="-1.8,9.3 0,8.4 1.8,9.3" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="-1.8,9.3 0,8.4 1.8,9.3" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>40k+</span>
+              <span>40k+ ft</span>
             </div>
           </div>
         </div>

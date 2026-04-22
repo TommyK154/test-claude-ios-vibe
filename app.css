@@ -152,6 +152,34 @@
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
+    /* 4-way base-map picker inside the settings panel. Grid layout so the
+       buttons wrap cleanly on narrow screens (2×2) and line up in a row
+       on wider viewports. Active layer reads in accent color — same
+       pattern as the LEAD / filter chips elsewhere. */
+    .map-layer-picker {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+      gap: 6px;
+    }
+    .map-layer-btn {
+      min-height: 40px;
+      padding: 0 10px;
+      border: 1px solid var(--border-2);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .map-layer-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0a1018;
+    }
     .ais-status { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-top: 4px; }
     .ais-status.ok { color: var(--accent); }
     .ais-status.err { color: var(--danger); }
@@ -739,6 +767,7 @@
       box-sizing: border-box;
     }
     .legend {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: flex-end;
@@ -778,8 +807,14 @@
     }
     .legend-body {
       display: none;
-      width: 100%;
-      margin-top: 6px;
+      /* Float as a dropdown anchored to the toggle; this keeps the closed
+         legend at toggle-width even when open, so the .radar-extras flex
+         row can't be pushed off the right edge of the viewport by wide
+         legend content. */
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      width: min(340px, calc(100vw - 40px));
       padding: 10px 12px;
       border: 1px solid var(--border);
       background: var(--surface);
@@ -788,6 +823,8 @@
       color: var(--text);
       line-height: 1.6;
       box-sizing: border-box;
+      z-index: 10;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
     }
     .legend.open .legend-body { display: block; }
     .legend.open .legend-toggle .chevron { transform: rotate(180deg); }
