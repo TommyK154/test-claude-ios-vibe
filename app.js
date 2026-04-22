@@ -15,6 +15,8 @@
         banner.hidden = false;
       })();
 
+      // ==================== PRESETS · AIRPORTS ====================
+
       var PRESETS = [
         { id: "sfo", label: "San Francisco", lat: 37.6188, lon: -122.3754 },
         { id: "lax", label: "Los Angeles",   lat: 33.9416, lon: -118.4085 },
@@ -206,6 +208,8 @@
         });
       }
 
+      // ==================== API SOURCES · REFRESH CADENCE ====================
+
       function adsbFiDirect(lat, lon, nm) {
         return "https://opendata.adsb.fi/api/v2/point/" + lat + "/" + lon + "/" + nm;
       }
@@ -249,6 +253,8 @@
         return /proxy|opensky/i.test(src) ? REFRESH_MS_FALLBACK : REFRESH_MS_FAST;
       }
       var NM_TO_KM = 1.852;
+
+      // ==================== STATE · HELPERS · UI BUILDERS ====================
 
       var state = {
         center: { lat: PRESETS[0].lat, lon: PRESETS[0].lon, label: PRESETS[0].label, id: PRESETS[0].id },
@@ -545,6 +551,8 @@
         return (R * c) / NM_TO_KM;
       }
 
+
+      // ==================== NORMALIZERS · FETCH · TRACKS · OVERLAYS ====================
 
       function normalizeReadsb(raw) {
         var arr = (raw && (raw.ac || raw.aircraft)) || [];
@@ -992,6 +1000,8 @@
         r3lbl.textContent = Math.round(r * 0.75) + " NM";
       }
 
+      // ==================== TILES · MAP LAYERS · PROJECTION ====================
+
       function computeTileZoom(lat, rangeNm) {
         var rangeMeters = rangeNm * 1852 * 2;
         var radarPx = 200;
@@ -1257,6 +1267,8 @@
         if (altFt < 40000) return 3;  // typical airliner cruise
         return 4;                      // long-haul / bizjet / military
       }
+
+      // ==================== RADAR · LIST · SELECTED CARD ====================
 
       function renderRadar() {
         radarCount.textContent = state.planes.length;
@@ -2237,6 +2249,8 @@
         }).catch(function () { return tryPhotoUrls(urls, idx + 1); });
       }
 
+      // ==================== SELECTION · POLLING · NOTABLE ====================
+
       function selectPlane(hex) {
         if (!hex) return;
         if (state.selectedHex === hex) { deselectAll(); return; }
@@ -2550,6 +2564,8 @@
         }).catch(function () { /* ignore — retry on next tick */ });
       }
 
+      // ==================== APP LIFECYCLE · RANGE · AIRPORT SEARCH ====================
+
       function renderAll() {
         renderRadar();
         renderShips();
@@ -2853,6 +2869,8 @@
         });
       }
 
+      // ==================== GESTURE · RADAR DRAG · PINCH ====================
+
       function setupRadarDrag() {
         var svg = document.getElementById("radar");
         if (!svg) return;
@@ -3148,6 +3166,8 @@
           resetAll();
         });
       }
+
+      // ==================== SETTINGS · AIS · SHIPS · BOOT ====================
 
       function setupSettings() {
         var btn = document.getElementById("settingsBtn");
