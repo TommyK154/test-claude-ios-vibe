@@ -534,7 +534,7 @@
       display: flex;
       flex-direction: column;
       gap: 2px;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
     /* Top strip of the plane card: TRACK status on the left, ✕ close button
        on the right, aligned on the same row. Replaces the old absolute-
@@ -545,15 +545,24 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .sel-top-row .sel-close {
-      position: static;
+      position: relative;
       top: auto;
       right: auto;
-      width: 40px;
-      height: 40px;
+      width: 28px;
+      height: 28px;
+      font-size: 15px;
       flex: 0 0 auto;
+      /* Compact visual button but the ::before pseudo expands the hit
+         region back out to 44 CSS px so the tap target still meets the
+         mobile-first minimum. */
+    }
+    .sel-top-row .sel-close::before {
+      content: "";
+      position: absolute;
+      inset: -8px;
     }
     .sel-top-row .loading-row { flex: 1; min-width: 0; }
     .sel-head-row {
@@ -564,13 +573,13 @@
       min-height: 32px;
     }
     .sel-call {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
       letter-spacing: 0.02em;
       font-variant-numeric: tabular-nums;
     }
     .sel-reg {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
@@ -835,7 +844,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 8px 0 0;
+      margin: 4px 0 0;
       font-family: var(--mono);
       color: var(--text);
       flex-wrap: wrap;
@@ -843,7 +852,7 @@
     .sel-route .sel-airport {
       color: #ff4ddb;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 0.08em;
     }
     .sel-route .sel-arrow { color: #ff4ddb; font-weight: 700; }
