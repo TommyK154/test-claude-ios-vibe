@@ -535,10 +535,33 @@
       flex-direction: column;
       gap: 2px;
       margin-bottom: 8px;
-      /* Reserve space on the right so the LEAD picker (and any other
-         head-row controls) don't crowd the absolutely-positioned ✕ close
-         button at top:6 right:6 (width 44). */
-      padding-right: 56px;
+    }
+    /* Top strip of the plane card: TRACK status on the left, ✕ close button
+       on the right, aligned on the same row. Replaces the old absolute-
+       positioned close button for the plane card (ship + placeholder cards
+       still use the absolute variant). */
+    .sel-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .sel-top-row .sel-close {
+      position: static;
+      top: auto;
+      right: auto;
+      width: 40px;
+      height: 40px;
+      flex: 0 0 auto;
+    }
+    .sel-top-row .loading-row { flex: 1; min-width: 0; }
+    /* LEAD picker sits on its own row right-aligned, directly below the ✕
+       so the two controls stack in the right column. */
+    .sel-controls-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 6px;
     }
     .sel-head-row {
       display: flex;
@@ -1039,26 +1062,27 @@
       width: 16px;
       height: 18px;
       background: var(--accent);
-      /* Home-plate shape: flat top, tapers to a point at the bottom.
-         Apex lands on the track center line (steam-gauge altimeter vibe). */
-      clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
+      /* Home-plate shape with softened corners: quadratic curves at the
+         top corners, the shoulders where it starts narrowing, and the
+         apex tip. Coordinates in CSS px matching the 16x18 thumb body.
+         Apex (bottom point) lands on the track center line (steam-gauge
+         altimeter vibe). */
+      clip-path: path('M 3 0 L 13 0 Q 16 0 16 3 L 16 10 Q 16 11.2 15 11.8 L 9 17.4 Q 8 18 7 17.4 L 1 11.8 Q 0 11.2 0 10 L 0 3 Q 0 0 3 0 Z');
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
       border: none;
       border-radius: 0;
       cursor: pointer;
       pointer-events: auto;
-      /* margin-top pushes the thumb so its bottom apex (clip 50% 100%)
-         lands at the runnable-track center. Input height 32, track 14-18,
-         track center 16; thumb height 18 placed with top at track_center -
-         thumb_height = -2, which is margin 14 - (-2) = -16 from runnable-
-         track top. */
+      /* margin-top pushes the thumb so its bottom apex lands at the
+         runnable-track center. Input height 32, track 14-18, track center
+         16; 18 px thumb placed with top at -2 = margin 14 - (-2) = -16. */
       margin-top: -16px;
     }
     .alt-range-input::-moz-range-thumb {
       width: 16px;
       height: 18px;
       background: var(--accent);
-      clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
+      clip-path: path('M 3 0 L 13 0 Q 16 0 16 3 L 16 10 Q 16 11.2 15 11.8 L 9 17.4 Q 8 18 7 17.4 L 1 11.8 Q 0 11.2 0 10 L 0 3 Q 0 0 3 0 Z');
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
       border: none;
       border-radius: 0;
