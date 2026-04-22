@@ -1006,15 +1006,22 @@
       pointer-events: none;
       -webkit-appearance: none;
       appearance: none;
+      outline: none;
+      box-sizing: border-box;
     }
+    /* Slim runnable-tracks (4 px) matching the visible .alt-range-track,
+       with auto-generated top/bottom margin to vertically center the track
+       inside the 32 px input. Thumb's negative margin-top lifts its
+       center line onto the track center. */
     .alt-range-input::-webkit-slider-runnable-track {
       background: transparent;
-      height: 32px;
+      height: 4px;
       border: none;
+      margin: 14px 0;
     }
     .alt-range-input::-moz-range-track {
       background: transparent;
-      height: 32px;
+      height: 4px;
       border: none;
     }
     .alt-range-input::-webkit-slider-thumb {
@@ -1028,7 +1035,7 @@
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
       cursor: pointer;
       pointer-events: auto;
-      margin-top: 0;
+      margin-top: -7px;
     }
     .alt-range-input::-moz-range-thumb {
       width: 18px;
@@ -1046,7 +1053,7 @@
       font-weight: 700;
       letter-spacing: 0.08em;
       color: var(--muted);
-      min-width: 70px;
+      min-width: 90px;
       text-align: right;
     }
     .alt-range-row.active .alt-range-readout { color: var(--accent); }
