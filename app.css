@@ -334,10 +334,36 @@
     }
     .preset-row {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 6px;
       margin-bottom: 12px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      /* Edge-fade overflow hint. --ov-l / --ov-r are toggled by
+         installOverflowHints() in app.js: 0 = at that edge,
+         1 = content continues past that edge. */
+      --ov-l: 0;
+      --ov-r: 0;
+      -webkit-mask-image: linear-gradient(
+        to right,
+        rgba(0,0,0, calc(1 - var(--ov-l))) 0,
+        #000 24px,
+        #000 calc(100% - 24px),
+        rgba(0,0,0, calc(1 - var(--ov-r))) 100%
+      );
+              mask-image: linear-gradient(
+        to right,
+        rgba(0,0,0, calc(1 - var(--ov-l))) 0,
+        #000 24px,
+        #000 calc(100% - 24px),
+        rgba(0,0,0, calc(1 - var(--ov-r))) 100%
+      );
     }
+    .preset-row::-webkit-scrollbar { display: none; }
+    .preset-row > * { flex: 0 0 auto; scroll-snap-align: start; }
     .preset {
       min-height: 36px;
       padding: 7px 12px;
@@ -482,6 +508,36 @@
       pointer-events: none;
     }
     .radar-overlay .rcount { color: var(--plane); }
+    /* Second row of the radar overlay: tile-load diagnostic banner.
+       Hidden when the satellite layer is active or when tiles load cleanly;
+       appears when a chart layer is selected and tiles are failing. */
+    .radar-overlay.tile-status-row {
+      top: 36px;
+      justify-content: flex-start;
+      pointer-events: none;
+    }
+    .tile-status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(7, 12, 21, 0.8);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      max-width: calc(100% - 36px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tile-status[hidden] { display: none !important; }
+    .tile-status:empty { display: none !important; }
+    .tile-status.err {
+      background: rgba(227, 125, 125, 0.16);
+      border: 1px solid var(--danger);
+      color: #f3b3b3;
+    }
 
     .selected-card {
       background: var(--surface);
@@ -719,67 +775,226 @@
       color: #0a1018;
     }
 
-    /* Row under the radar that hosts the persistent LEAD picker (left)
-       and the LEGEND disclosure (right). Both always visible — LEAD is
-       no longer nested inside the plane card. */
-    .radar-extras {
+    /* Below-radar control row — Map Layer pill (left), LEAD pill (middle),
+       Legend "?" icon (right). Single line; never wraps. All controls
+       match 44 CSS px height for tap-target parity. */
+    .map-controls-row {
+      position: relative;
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      margin: 8px 0 16px;
-    }
-    .lead-picker-standalone {
-      /* Slightly pop the outline so it doesn't melt into the dark bg when
-         nothing is selected (no gold card below to anchor it visually).
-         min-height matches the LEGEND disclosure pill (also 44 px) so
-         the two controls sit at equal height across the row. */
-      border-color: var(--border-2);
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0 12px;
       min-height: 44px;
-      box-sizing: border-box;
     }
-    .legend {
+
+    /* Map Layer control: pill + anchored dropdown */
+    .map-layer-control { position: relative; flex: 0 0 auto; }
+    .map-layer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      min-height: 44px;
+      max-width: 170px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .map-layer-pill .mlp-icon { display: inline-flex; color: var(--accent); }
+    .map-layer-pill .mlp-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .map-layer-pill .mlp-caret {
+      display: inline-flex;
+      color: var(--muted);
+      transition: transform 180ms ease;
+    }
+    .map-layer-pill[aria-expanded="true"] .mlp-caret { transform: rotate(180deg); }
+    .map-layer-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 200px;
+      padding: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      z-index: 20;
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
-      flex: 0 0 auto;
+      gap: 2px;
     }
-    .legend-toggle {
+    .map-layer-dropdown[hidden] { display: none; }
+    .map-layer-option {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-align: left;
+      border-radius: 4px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .map-layer-option:hover, .map-layer-option:focus {
+      background: var(--surface-2);
+      outline: none;
+    }
+    .map-layer-option.active {
+      background: var(--accent);
+      color: #0a1018;
+    }
+
+    /* INOP sticker overlay — Dymo-style embossed label tape. Black plastic
+       strip with raised white characters, laid flat over the broken row.
+       pointer-events:none so the row below still takes taps and triggers
+       the tile-fail diagnostic banner. */
+    .map-layer-option.inop { opacity: 0.92; }
+    .map-layer-option.inop::after {
+      content: "INOP";
+      position: absolute;
+      inset: 5px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        linear-gradient(180deg,
+          #1d1d1f 0%,
+          #121214 45%,
+          #09090b 100%);
+      color: #f1f1f3;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.4em;
+      text-indent: 0.4em;
+      text-transform: uppercase;
+      border-radius: 3px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.85),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+        0 2px 3px rgba(0, 0, 0, 0.55),
+        0 5px 10px rgba(0, 0, 0, 0.3);
+      text-shadow:
+        0 -1px 0 rgba(0, 0, 0, 0.85),
+        0 1px 0 rgba(255, 255, 255, 0.35),
+        0 2px 1px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+    }
+
+    /* LEAD pill — collapses to label+value, expands to 3-option segmented
+       on tap. Width transitions + options stagger-fade in for a tactile feel. */
+    .lead-pill { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; }
+    .lp-collapsed {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 0 14px;
       min-height: 44px;
       background: var(--surface);
-      color: var(--muted);
+      color: var(--text);
       border: 1px solid var(--border);
       border-radius: 22px;
       font-family: var(--mono);
+      font-weight: 700;
       font-size: 11px;
       letter-spacing: 0.12em;
-      text-transform: uppercase;
-      font-weight: 700;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
-    .legend-toggle:hover, .legend-toggle:active {
+    .lp-collapsed .lp-kw, .lp-collapsed .lp-unit { color: var(--muted); }
+    .lp-collapsed .lp-val { color: var(--accent); font-size: 14px; min-width: 1em; text-align: center; }
+    .lp-expanded {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      min-height: 44px;
+      background: var(--surface);
       color: var(--text);
-      border-color: var(--border-2);
+      border: 1px solid var(--border);
+      border-radius: 22px;
     }
-    .legend-toggle .lg-q {
+    .lp-expanded .lp-kw, .lp-expanded .lp-unit {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+    .lead-pill[data-state="expanded"] .lp-collapsed { display: none; }
+    .lead-pill[data-state="expanded"] .lp-expanded { display: inline-flex; }
+    .lp-opt {
+      min-width: 32px;
+      min-height: 32px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+    .lead-pill[data-state="expanded"] .lp-opt { opacity: 1; transform: translateX(0); }
+    .lead-pill[data-state="expanded"] .lp-opt:nth-of-type(2) { transition-delay: 40ms; }
+    .lead-pill[data-state="expanded"] .lp-opt:nth-of-type(3) { transition-delay: 80ms; }
+    .lp-opt.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0a1018;
+    }
+
+    /* Legend icon — right-aligned 44×44 "?" circle */
+    .legend-icon {
+      margin-left: auto;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-weight: 900;
+      font-size: 18px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      border: 1px solid currentColor;
-      font-size: 10px;
-      line-height: 1;
+      flex: 0 0 auto;
     }
+    .legend-icon:hover, .legend-icon:active { color: var(--text); border-color: var(--border-2); }
+    .legend-icon[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+
+    /* Legend container sits below the control row; body hidden until .open.
+       Body now flows inline (no absolute positioning) so it can't push the
+       row off the viewport edge. */
+    .legend { position: relative; margin: 0 0 12px; }
     .legend-body {
       display: none;
       width: 100%;
-      margin-top: 6px;
       padding: 10px 12px;
       border: 1px solid var(--border);
       background: var(--surface);
@@ -790,7 +1005,6 @@
       box-sizing: border-box;
     }
     .legend.open .legend-body { display: block; }
-    .legend.open .legend-toggle .chevron { transform: rotate(180deg); }
     .legend-body .lg-row {
       display: flex;
       align-items: center;
@@ -972,10 +1186,33 @@
     .list-controls:empty { display: none; }
     .chip-row {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 6px;
       align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      --ov-l: 0;
+      --ov-r: 0;
+      -webkit-mask-image: linear-gradient(
+        to right,
+        rgba(0,0,0, calc(1 - var(--ov-l))) 0,
+        #000 24px,
+        #000 calc(100% - 24px),
+        rgba(0,0,0, calc(1 - var(--ov-r))) 100%
+      );
+              mask-image: linear-gradient(
+        to right,
+        rgba(0,0,0, calc(1 - var(--ov-l))) 0,
+        #000 24px,
+        #000 calc(100% - 24px),
+        rgba(0,0,0, calc(1 - var(--ov-r))) 100%
+      );
     }
+    .chip-row::-webkit-scrollbar { display: none; }
+    .chip-row > * { flex: 0 0 auto; scroll-snap-align: start; }
     .chip-row-label {
       font-family: var(--mono);
       font-size: 10px;

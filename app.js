@@ -26,7 +26,11 @@
         { id: "sin", label: "Singapore",     lat: 1.3644,  lon: 103.9915 }
       ];
 
-      var AIRPORTS = [
+      // Inline fallback — ~148 commercial airports. Used until airports.js
+      // lands (loaded async via a separate <script> tag). `getAirports()`
+      // below returns the fallback initially, then upgrades to the full
+      // ~7,700-entry OpenFlights dataset once `window.__airports` is set.
+      var AIRPORTS_FALLBACK = [
         {iata:"SFO",icao:"KSFO",name:"San Francisco Intl",city:"San Francisco",lat:37.6188,lon:-122.3754},
         {iata:"LAX",icao:"KLAX",name:"Los Angeles Intl",city:"Los Angeles",lat:33.9416,lon:-118.4085},
         {iata:"JFK",icao:"KJFK",name:"John F Kennedy Intl",city:"New York",lat:40.6413,lon:-73.7781},
@@ -177,6 +181,31 @@
         {iata:"LIM",icao:"SPJC",name:"Jorge Chávez",city:"Lima",lat:-12.0219,lon:-77.1143}
       ];
 
+      // `window.__airports` is the compact array-of-arrays payload from
+      // airports.js (bundled OpenFlights, ~7,700 entries). We lazily convert
+      // it to the same object shape as the inline fallback and cache the
+      // result so the search + nearest-airport scan stay allocation-free
+      // per keystroke.
+      var __airportsFullCache = null;
+      function getAirports() {
+        if (__airportsFullCache) return __airportsFullCache;
+        var raw = (typeof window !== "undefined") ? window.__airports : null;
+        if (!raw || !raw.length) return AIRPORTS_FALLBACK;
+        var out = new Array(raw.length);
+        for (var i = 0; i < raw.length; i++) {
+          var r = raw[i];
+          out[i] = { iata: r[0] || "", icao: r[1] || "", name: r[2] || "", city: r[3] || "", country: r[4] || "", lat: r[5], lon: r[6] };
+        }
+        __airportsFullCache = out;
+        return out;
+      }
+      if (typeof window !== "undefined") {
+        window.addEventListener("airports-loaded", function () {
+          __airportsFullCache = null;          // force re-convert on next call
+          try { if (typeof updateTacReadout === "function") updateTacReadout(); } catch (e) {}
+        });
+      }
+
       function adsbFiDirect(lat, lon, nm) {
         return "https://opendata.adsb.fi/api/v2/point/" + lat + "/" + lon + "/" + nm;
       }
@@ -243,6 +272,7 @@
         lastSelectedPlane: null, // grace-period snapshot after deselect so the marker doesn't disappear
         lastSelectedAt: 0,       // ms timestamp when lastSelectedPlane was set
         aircraftOwner: {}, // hex -> { operator, type, ... } from adsbdb.com, cached per selection
+        airportLive: {},   // ICAO -> { apt } | null | "pending" — live-fetched fallback for fields not in bundled OpenFlights (e.g. small US GA like KSZP)
         aisMessageCount: 0,
         aisFirstMsgAt: 0,
         aisNoTrafficTimer: null,
@@ -273,7 +303,11 @@
         altMaxFt: 50000,          // also the slider ceiling; planes > 50k pass when at max
         shipFilter: "all",        // "all" | "underway" | "anchored" | "distress"
         shipSort: "dist",         // "dist" | "spd" | "name"
-        shipSortDesc: false
+        shipSortDesc: false,
+        // Base map tile source. Satellite default; VFR/IFR charts are
+        // opt-in via the settings-panel picker. US-only for non-satellite
+        // layers (ChartBundle serves FAA public-domain charts).
+        mapLayer: "satellite"     // "satellite" | "sectional" | "ifr-low" | "ifr-high"
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
       try {
@@ -287,6 +321,11 @@
         state.shipFilter = localStorage.getItem("list.shipFilter") || "all";
         state.shipSort = localStorage.getItem("list.shipSort") || "dist";
         state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
+        var storedLayer = localStorage.getItem("map.layer");
+        if (storedLayer === "satellite" || storedLayer === "sectional" ||
+            storedLayer === "ifr-low" || storedLayer === "ifr-high") {
+          state.mapLayer = storedLayer;
+        }
       } catch (e) {}
       state.military = {};  // hex -> true for military aircraft
 
@@ -364,12 +403,43 @@
         });
       }
 
+      // Edge-fade overflow hint for horizontal scroll rows. Sets --ov-l / --ov-r
+      // (0..1) on the row based on whether content continues past each edge.
+      // CSS uses these to fade the appropriate side of the mask — signals
+      // "there's more here, swipe this way" without a scrollbar.
+      function updateOverflowHint(row) {
+        var sw = row.scrollWidth, cw = row.clientWidth, sl = row.scrollLeft;
+        var canLeft  = sl > 1 ? "1" : "0";
+        var canRight = (sl + cw) < (sw - 1) ? "1" : "0";
+        row.style.setProperty("--ov-l", canLeft);
+        row.style.setProperty("--ov-r", canRight);
+      }
+      function installOverflowHints(container) {
+        if (!container) return;
+        var rows = container.matches && container.matches(".chip-row, .preset-row")
+          ? [container]
+          : Array.prototype.slice.call(container.querySelectorAll(".chip-row, .preset-row"));
+        rows.forEach(function (row) {
+          if (row.__ovHinted) { updateOverflowHint(row); return; }
+          row.__ovHinted = true;
+          updateOverflowHint(row);
+          row.addEventListener("scroll", function () { updateOverflowHint(row); }, { passive: true });
+          if (typeof ResizeObserver !== "undefined") {
+            var ro = new ResizeObserver(function () { updateOverflowHint(row); });
+            ro.observe(row);
+          }
+        });
+      }
+      window.addEventListener("resize", function () {
+        document.querySelectorAll(".chip-row, .preset-row").forEach(updateOverflowHint);
+      });
+
       function buildPresets() {
         presetRow.innerHTML = "";
         var geoBtn = document.createElement("button");
         geoBtn.type = "button";
         geoBtn.className = "preset preset-geo";
-        geoBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/></svg>USE MY LOCATION';
+        geoBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/></svg>GPS';
         geoBtn.addEventListener("click", useGeolocation);
         presetRow.appendChild(geoBtn);
 
@@ -387,6 +457,7 @@
           });
           presetRow.appendChild(b);
         });
+        installOverflowHints(presetRow);
       }
 
       function markActivePreset() {
@@ -935,6 +1006,80 @@
         return Math.min(18, Math.max(3, Math.round(z) + hd));
       }
 
+      // Available base-map layers. Satellite is the global default; VFR and
+      // IFR chart layers are served by ChartBundle.com (FAA public-domain
+      // tiles, US-only, CORS-clean, no API key). The URL builders live here
+      // so renderTiles can swap sources without reshaping its loop. Labels
+      // are only overlaid for satellite — the aeronautical charts have
+      // airports / airspace / fixes already baked into the tile.
+      var IMAGERY_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
+      var LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
+      function chartBundleUrl(layer, z, x, y) {
+        return "https://wms.chartbundle.com/tms/v1.0/" + layer + "/" + z + "/" + x + "/" + y + ".png?type=google";
+      }
+      var MAP_LAYERS = {
+        "satellite": {
+          label: "Satellite",
+          url: function (z, x, y) { return IMAGERY_URL + z + "/" + y + "/" + x; },
+          maxZoom: 18,
+          hasLabels: true,
+          attribution: "Esri, Maxar, Earthstar Geographics"
+        },
+        "sectional": {
+          label: "VFR Sectional",
+          url: function (z, x, y) { return chartBundleUrl("sec", z, x, y); },
+          maxZoom: 12,
+          hasLabels: false,
+          attribution: "VFR charts © ChartBundle.com · FAA public domain · US only"
+        },
+        "ifr-low": {
+          label: "IFR Low",
+          url: function (z, x, y) { return chartBundleUrl("enrl", z, x, y); },
+          maxZoom: 11,
+          hasLabels: false,
+          attribution: "IFR low enroute © ChartBundle.com · FAA public domain · US only"
+        },
+        "ifr-high": {
+          label: "IFR High",
+          url: function (z, x, y) { return chartBundleUrl("enrh", z, x, y); },
+          maxZoom: 11,
+          hasLabels: false,
+          attribution: "IFR high enroute © ChartBundle.com · FAA public domain · US only"
+        }
+      };
+      function currentMapLayer() {
+        return MAP_LAYERS[state.mapLayer] || MAP_LAYERS.satellite;
+      }
+
+      // Tile-load diagnostics. Populated by renderTiles + placeTile, read by
+      // updateTileStatus to paint a user-visible banner when a non-default
+      // map layer is failing (all tiles erroring out = black radar). Silent
+      // when tiles load normally; only noisy when the user has a real
+      // problem worth seeing.
+      var tileLoadState = { layer: "satellite", requested: 0, loaded: 0, errored: 0, lastError: null, renderStartedAt: 0 };
+      function updateTileStatus() {
+        var el = document.getElementById("tileStatus");
+        if (!el) return;
+        var s = tileLoadState;
+        var pending = s.requested - s.loaded - s.errored;
+        var allFailed = s.requested > 0 && s.errored === s.requested;
+        var someFailed = s.requested > 0 && s.errored > 0 && s.loaded === 0;
+        if (s.layer === "satellite") { el.hidden = true; el.textContent = ""; return; }
+        if (allFailed || someFailed) {
+          el.hidden = false;
+          el.className = "tile-status err";
+          var url = s.lastError ? " · " + s.lastError.replace(/^https?:\/\//, "").slice(0, 60) : "";
+          el.textContent = (s.layer.toUpperCase() + " TILES FAILED · 0 OF " + s.requested + " LOADED" + url);
+        } else if (pending > 0) {
+          el.hidden = false;
+          el.className = "tile-status";
+          el.textContent = s.layer.toUpperCase() + " · LOADING " + s.loaded + "/" + s.requested + "…";
+        } else {
+          el.hidden = true;
+          el.textContent = "";
+        }
+      }
+
       function renderTiles() {
         var tileLayer = document.getElementById("tileLayer");
         var labelLayer = document.getElementById("labelLayer");
@@ -942,7 +1087,22 @@
         tileLayer.innerHTML = "";
         if (labelLayer) labelLayer.innerHTML = "";
         var center = state.center;
-        var z = computeTileZoom(center.lat, state.rangeNm);
+        var layer = currentMapLayer();
+        // Tile-load counters so a non-rendering chart layer surfaces a user-
+        // visible diagnostic rather than a silent black radar. Reset each
+        // render; placeTile's load/error handlers increment these and
+        // updateTileStatus() writes a banner if too many fail.
+        tileLoadState = {
+          layer: state.mapLayer,
+          requested: 0,
+          loaded: 0,
+          errored: 0,
+          lastError: null,
+          renderStartedAt: Date.now()
+        };
+        // Chart layers (VFR / IFR) top out lower than satellite; clamp so
+        // we don't request tiles ChartBundle will 404 on.
+        var z = Math.min(layer.maxZoom, computeTileZoom(center.lat, state.rangeNm));
         var n = Math.pow(2, z);
         var latRad = center.lat * Math.PI / 180;
         var centerTileX = (center.lon + 180) / 360 * n;
@@ -961,8 +1121,6 @@
         var halfGrid = Math.min(8, Math.ceil((140 + tileSize / 2) / tileSize));
         var svgns = "http://www.w3.org/2000/svg";
         var xlinkns = "http://www.w3.org/1999/xlink";
-        var IMAGERY = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
-        var LABELS = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
 
         function placeTile(parent, url, rx, ry, size) {
           var img = document.createElementNS(svgns, "image");
@@ -978,8 +1136,18 @@
           img.setAttributeNS(xlinkns, "href", url);
           img.setAttribute("href", url);
           img.setAttribute("image-rendering", "optimizeQuality");
-          img.addEventListener("load", function () { img.classList.add("ready"); });
-          img.addEventListener("error", function () { img.remove(); });
+          tileLoadState.requested += 1;
+          img.addEventListener("load", function () {
+            img.classList.add("ready");
+            tileLoadState.loaded += 1;
+            updateTileStatus();
+          });
+          img.addEventListener("error", function () {
+            img.remove();
+            tileLoadState.errored += 1;
+            tileLoadState.lastError = url;
+            updateTileStatus();
+          });
           parent.appendChild(img);
         }
 
@@ -998,9 +1166,10 @@
             // a vignette masking the corners.
             if (rx + tileSize < -110 || rx > 110 || ry + tileSize < -110 || ry > 110) continue;
 
-            var suffix = z + "/" + ty + "/" + wrappedTx;
-            placeTile(tileLayer, IMAGERY + suffix, rx, ry, tileSize);
-            if (labelLayer) placeTile(labelLayer, LABELS + suffix, rx, ry, tileSize);
+            placeTile(tileLayer, layer.url(z, wrappedTx, ty), rx, ry, tileSize);
+            if (labelLayer && layer.hasLabels) {
+              placeTile(labelLayer, LABELS_URL + z + "/" + ty + "/" + wrappedTx, rx, ry, tileSize);
+            }
           }
         }
       }
@@ -1022,15 +1191,37 @@
         return { x: dxNm * scale, y: -dyNm * scale };
       }
 
+      // Nearest-airport lookup over the full dataset. Returns { apt, distNm }
+      // for the closest airport, or null if the dataset is still loading and
+      // nothing within maxNm is in the fallback list.
+      function nearestAirport(lat, lon, maxNm) {
+        var list = getAirports();
+        if (!list.length) return null;
+        var best = null, bestD = Infinity;
+        for (var i = 0; i < list.length; i++) {
+          var a = list[i];
+          if (!isFinite(a.lat) || !isFinite(a.lon)) continue;
+          var d = haversineNm(lat, lon, a.lat, a.lon);
+          if (d < bestD) { bestD = d; best = a; }
+        }
+        if (!best) return null;
+        if (maxNm != null && bestD > maxNm) return null;
+        return { apt: best, distNm: bestD };
+      }
+
       function updateTacReadout() {
         var tr = document.getElementById("tacReadout");
         if (!tr) return;
-        var label = (state.center.label || "—").toString().toUpperCase();
-        var latStr = state.center.lat.toFixed(3);
-        var lonStr = state.center.lon.toFixed(3);
         var shipCount = Object.keys(state.ships || {}).length;
         var contactLine = state.planes.length + (state.aisKey ? " / " + shipCount : "");
-        tr.textContent = label + " · " + latStr + "," + lonStr + " · " + state.rangeNm + "NM · " + contactLine;
+        var near = nearestAirport(state.center.lat, state.center.lon, 50);
+        var head;
+        if (near) {
+          head = "NEAREST: " + (near.apt.iata || near.apt.icao);
+        } else {
+          head = "OPEN WATER";
+        }
+        tr.textContent = head + " · " + state.rangeNm + " NM · " + contactLine + " CONTACTS";
       }
 
       // Records a render miss for the selected plane with a reason code and
@@ -1380,7 +1571,7 @@
           { k: "ground", label: "GROUND" },
           { k: "mil", label: "MIL" },
           { k: "notable", label: "NOTABLE" },
-          { k: "emerg", label: "⚠" }
+          { k: "emerg", label: "EMERG" }
         ];
         var planeSorts = [
           { k: "dist", label: "DIST" },
@@ -1444,6 +1635,7 @@
           });
         });
         wireAltRangeSlider();
+        installOverflowHints(controls);
       }
 
       // Formats a ft value as an aviation flight level ("FL080" for 8,000 ft,
@@ -1709,7 +1901,7 @@
         var alertsHtml = "";
         var sq2 = sq.toString();
         var emLabel = sq2 === "7500" ? "HIJACK" : sq2 === "7600" ? "RADIO FAIL" : sq2 === "7700" ? "EMERGENCY" : "";
-        if (emLabel) alertsHtml += '<div class="sel-alert emerg">⚠ ' + emLabel + ' · SQUAWK ' + sq2 + '</div>';
+        if (emLabel) alertsHtml += '<div class="sel-alert emerg">⚠ ' + emLabel + ' · SQUAWK ' + escapeHtml(sq2) + '</div>';
         if (state.military && state.military[hexLower]) alertsHtml += '<div class="sel-alert mil">MIL · TRACKED AS MILITARY</div>';
         var notable = callsign ? matchNotableCallsign(callsign) : null;
         if (notable) {
@@ -1796,25 +1988,26 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Keeps the standalone LEAD picker's active-button class in sync
-      // with state.trendMin. The picker lives persistently under the
-      // radar (left-justified, mirroring the LEGEND on the right) — it's
-      // no longer rendered inside the plane card. LEAD is the aviation/
-      // weapons-systems term for a projected intercept position (chosen
-      // over "TREND" to avoid confusion with the TRAIL = actual flown
-      // path).
+      // LEAD pill — persistent collapsed pill below the radar shows the
+      // current value. Tapping expands it to the 3-option segmented picker;
+      // tapping an option sets + collapses. LEAD is the aviation/weapons-
+      // systems term for a projected intercept position (chosen over
+      // "TREND" to avoid confusion with the TRAIL = actual flown path).
       function syncLeadPicker() {
-        var picker = document.getElementById("leadPicker");
-        if (!picker) return;
         var tm = state.trendMin || 5;
-        var btns = picker.querySelectorAll("[data-trend-min]");
-        for (var i = 0; i < btns.length; i++) {
-          var m = parseInt(btns[i].getAttribute("data-trend-min"), 10);
-          var isActive = (m === tm);
-          btns[i].classList.toggle("active", isActive);
-          if (isActive) btns[i].setAttribute("aria-pressed", "true");
-          else btns[i].removeAttribute("aria-pressed");
+        var picker = document.getElementById("leadPicker");
+        if (picker) {
+          var btns = picker.querySelectorAll("[data-trend-min]");
+          for (var i = 0; i < btns.length; i++) {
+            var m = parseInt(btns[i].getAttribute("data-trend-min"), 10);
+            var isActive = (m === tm);
+            btns[i].classList.toggle("active", isActive);
+            if (isActive) btns[i].setAttribute("aria-pressed", "true");
+            else btns[i].removeAttribute("aria-pressed");
+          }
         }
+        var val = document.getElementById("leadPillValue");
+        if (val) val.textContent = String(tm);
       }
 
       // Called when any LEAD segmented button is tapped. Jumps directly
@@ -1830,14 +2023,126 @@
         renderSelected();
       }
 
-      function setupLeadPicker() {
-        var picker = document.getElementById("leadPicker");
-        if (!picker) return;
-        picker.addEventListener("click", function (e) {
-          var tgt = e.target && e.target.closest ? e.target.closest("[data-trend-min]") : null;
+      // Map-layer control — pill below the radar opens a dropdown with
+      // Satellite + VFR / IFR-Low / IFR-High. Chart layers render with an
+      // INOP pilot-sticker overlay (CSS only) until the tile source can be
+      // verified against the user's network. Picking a chart layer still
+      // applies it — the tile-fail banner surfaces the failure.
+      function syncMapLayerPicker() {
+        var label = document.getElementById("mapLayerLabel");
+        if (label) label.textContent = (MAP_LAYERS[state.mapLayer] || MAP_LAYERS.satellite).label;
+        var dd = document.getElementById("mapLayerDropdown");
+        if (!dd) return;
+        var opts = dd.querySelectorAll("[data-map-layer]");
+        for (var i = 0; i < opts.length; i++) {
+          var isActive = opts[i].getAttribute("data-map-layer") === state.mapLayer;
+          opts[i].classList.toggle("active", isActive);
+          if (isActive) opts[i].setAttribute("aria-selected", "true");
+          else opts[i].removeAttribute("aria-selected");
+        }
+      }
+      function setMapLayer(v) {
+        if (!MAP_LAYERS[v]) return;
+        if (state.mapLayer === v) return;
+        state.mapLayer = v;
+        try { localStorage.setItem("map.layer", v); } catch (e) {}
+        syncMapLayerPicker();
+        var el = document.getElementById("tileStatus");
+        if (el) { el.hidden = true; el.textContent = ""; }
+        renderTiles();
+        updateAttributionFooter();
+      }
+      function closeMapLayerDropdown() {
+        var pill = document.getElementById("mapLayerPill");
+        var dd = document.getElementById("mapLayerDropdown");
+        if (pill) pill.setAttribute("aria-expanded", "false");
+        if (dd) dd.hidden = true;
+      }
+      function openMapLayerDropdown() {
+        var pill = document.getElementById("mapLayerPill");
+        var dd = document.getElementById("mapLayerDropdown");
+        if (pill) pill.setAttribute("aria-expanded", "true");
+        if (dd) dd.hidden = false;
+      }
+      function setupMapLayerPicker() {
+        var pill = document.getElementById("mapLayerPill");
+        var dd = document.getElementById("mapLayerDropdown");
+        if (!pill || !dd) return;
+        pill.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (pill.getAttribute("aria-expanded") === "true") closeMapLayerDropdown();
+          else openMapLayerDropdown();
+        });
+        dd.addEventListener("click", function (e) {
+          var tgt = e.target && e.target.closest ? e.target.closest("[data-map-layer]") : null;
           if (!tgt) return;
           e.preventDefault();
-          setTrendMin(tgt.getAttribute("data-trend-min"));
+          setMapLayer(tgt.getAttribute("data-map-layer"));
+          closeMapLayerDropdown();
+        });
+        document.addEventListener("click", function (e) {
+          if (pill.getAttribute("aria-expanded") !== "true") return;
+          if (e.target.closest && e.target.closest("#mapLayerControl")) return;
+          closeMapLayerDropdown();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && pill.getAttribute("aria-expanded") === "true") closeMapLayerDropdown();
+        });
+        syncMapLayerPicker();
+      }
+
+      // Attribution footer updates to reflect the active base-map source so
+      // we stay compliant with ESRI / ChartBundle / FAA attribution terms.
+      function updateAttributionFooter() {
+        var footer = document.querySelector(".page-footer");
+        if (!footer) return;
+        var layer = currentMapLayer();
+        var base = layer.attribution;
+        var rest = "Flight data: adsb.fi / adsb.lol / OpenSky · Photos: planespotters.net · Routes: adsbdb.com · AIS: aisstream.io";
+        footer.textContent = "Imagery © " + base + " · " + rest;
+      }
+
+      function collapseLeadPill() {
+        var pill = document.getElementById("leadPill");
+        var trig = document.getElementById("leadPillTrigger");
+        if (pill) pill.setAttribute("data-state", "collapsed");
+        if (trig) trig.setAttribute("aria-expanded", "false");
+      }
+      function expandLeadPill() {
+        var pill = document.getElementById("leadPill");
+        var trig = document.getElementById("leadPillTrigger");
+        if (pill) pill.setAttribute("data-state", "expanded");
+        if (trig) trig.setAttribute("aria-expanded", "true");
+      }
+      function setupLeadPicker() {
+        var pill = document.getElementById("leadPill");
+        var trig = document.getElementById("leadPillTrigger");
+        var picker = document.getElementById("leadPicker");
+        if (picker) {
+          picker.addEventListener("click", function (e) {
+            var tgt = e.target && e.target.closest ? e.target.closest("[data-trend-min]") : null;
+            if (!tgt) return;
+            e.preventDefault();
+            setTrendMin(tgt.getAttribute("data-trend-min"));
+            collapseLeadPill();
+          });
+        }
+        if (trig) {
+          trig.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pill && pill.getAttribute("data-state") === "expanded") collapseLeadPill();
+            else expandLeadPill();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!pill || pill.getAttribute("data-state") !== "expanded") return;
+          if (e.target.closest && e.target.closest("#leadPill")) return;
+          collapseLeadPill();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && pill && pill.getAttribute("data-state") === "expanded") collapseLeadPill();
         });
         syncLeadPicker();
       }
@@ -2300,6 +2605,59 @@
         }
       });
 
+      // Parses FAA NASR-style DMS coords like "34-20-51.1000N" / "119-03-36.0000W"
+      // into signed decimal degrees. Returns NaN on any parse failure.
+      function parseDMS(s) {
+        if (typeof s !== "string") return NaN;
+        var m = s.match(/^\s*(\d+)[-\s](\d+)[-\s]([\d.]+)\s*([NSEW])\s*$/i);
+        if (!m) return NaN;
+        var deg = parseFloat(m[1]), min = parseFloat(m[2]), sec = parseFloat(m[3]);
+        var val = deg + min / 60 + sec / 3600;
+        var dir = m[4].toUpperCase();
+        if (dir === "S" || dir === "W") val = -val;
+        return val;
+      }
+
+      // Live airport lookup fallback for ICAO codes missing from the bundled
+      // OpenFlights dataset (which omits most small US GA fields). Hits the
+      // free FAA NASR mirror at aviationapi.com, then CORS proxies on failure.
+      // Result cached on state.airportLive keyed by uppercased ICAO.
+      // onResolve fires with the apt object (or null) so the caller can re-render.
+      function fetchAirportLive(icao, onResolve) {
+        icao = (icao || "").trim().toUpperCase();
+        if (!icao) return;
+        var cached = state.airportLive[icao];
+        if (cached === "pending") return;
+        if (cached !== undefined) { onResolve(cached); return; }
+        state.airportLive[icao] = "pending";
+        var base = "https://api.aviationapi.com/v1/airports?apt=" + encodeURIComponent(icao);
+        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
+        tryPhotoUrls(urls, 0).then(function (j) {
+          var arr = j && j[icao];
+          var row = arr && arr.length ? arr[0] : null;
+          if (!row) { state.airportLive[icao] = null; onResolve(null); return; }
+          var lat = parseFloat(row.latitude_deg != null ? row.latitude_deg : row.latitude);
+          var lon = parseFloat(row.longitude_deg != null ? row.longitude_deg : row.longitude);
+          if (!isFinite(lat)) lat = parseDMS(row.latitude);
+          if (!isFinite(lon)) lon = parseDMS(row.longitude);
+          if (!isFinite(lat) || !isFinite(lon)) { state.airportLive[icao] = null; onResolve(null); return; }
+          var apt = {
+            iata: row.faa_ident && row.faa_ident !== row.icao_id ? row.faa_ident : "",
+            icao: row.icao_id || icao,
+            name: row.facility_name || icao,
+            city: row.city || "",
+            country: row.state_full || "United States",
+            lat: lat,
+            lon: lon
+          };
+          state.airportLive[icao] = apt;
+          onResolve(apt);
+        }).catch(function () {
+          state.airportLive[icao] = null;
+          onResolve(null);
+        });
+      }
+
       function setupAirportSearch() {
         var input = document.getElementById("airportInput");
         var dropdown = document.getElementById("airportDropdown");
@@ -2324,16 +2682,50 @@
           // "SFO · San Francisco Intl" — extract the leading code token.
           var sepIdx = q.indexOf(" · ");
           if (sepIdx > 0) q = q.substring(0, sepIdx);
-          var exactIata = [], exactIcao = [], prefixCode = [], prefixText = [];
-          for (var i = 0; i < AIRPORTS.length; i++) {
-            var a = AIRPORTS[i];
-            if (a.iata === q) exactIata.push(a);
-            else if (a.icao === q) exactIcao.push(a);
-            else if (a.iata.indexOf(q) === 0 || a.icao.indexOf(q) === 0) prefixCode.push(a);
-            else if (a.city.toUpperCase().indexOf(q) !== -1 || a.name.toUpperCase().indexOf(q) !== -1) prefixText.push(a);
-            if (exactIata.length + exactIcao.length + prefixCode.length + prefixText.length > 40) break;
+          var list = getAirports();
+          var exactIata = [], exactIcao = [], prefixIata = [], prefixIcao = [], prefixCity = [], substr = [];
+          for (var i = 0; i < list.length; i++) {
+            var a = list[i];
+            if (a.iata && a.iata === q) exactIata.push(a);
+            else if (a.icao && a.icao === q) exactIcao.push(a);
+            else if (a.iata && a.iata.indexOf(q) === 0) prefixIata.push(a);
+            else if (a.icao && a.icao.indexOf(q) === 0) prefixIcao.push(a);
+            else if (a.city && a.city.toUpperCase().indexOf(q) === 0) prefixCity.push(a);
+            else if ((a.city && a.city.toUpperCase().indexOf(q) !== -1) || (a.name && a.name.toUpperCase().indexOf(q) !== -1)) substr.push(a);
+            var tot = exactIata.length + exactIcao.length + prefixIata.length + prefixIcao.length + prefixCity.length + substr.length;
+            if (tot > 40) break;
           }
-          return exactIata.concat(exactIcao).concat(prefixCode).concat(prefixText).slice(0, 8);
+          var out = exactIata.concat(exactIcao, prefixIata, prefixIcao, prefixCity, substr).slice(0, 8);
+          // Merge in live-fetched airport (e.g. KSZP from aviationapi.com
+          // for small US GA fields absent from bundled OpenFlights).
+          if (!out.length) {
+            var live = state.airportLive[q];
+            if (live && typeof live === "object") out = [live];
+          }
+          return out;
+        }
+
+        // Query looks like a full 4-letter ICAO — the aviationapi.com fallback
+        // is FAA-only so IATA prefixes won't hit. Restricting to 4 letters
+        // also naturally dedupes requests as the user types.
+        function isCodeShaped(q) {
+          q = q.trim().toUpperCase();
+          if (q.indexOf(" · ") > 0) q = q.substring(0, q.indexOf(" · "));
+          return /^[A-Z]{4}$/.test(q);
+        }
+        function canonQuery(q) {
+          q = q.trim().toUpperCase();
+          var sep = q.indexOf(" · ");
+          return sep > 0 ? q.substring(0, sep) : q;
+        }
+        function maybeLiveLookup(q) {
+          if (!isCodeShaped(q)) return;
+          var code = canonQuery(q);
+          fetchAirportLive(code, function () {
+            // Re-render only if user hasn't moved on to a different query.
+            if (canonQuery(input.value) !== code) return;
+            render(match(input.value));
+          });
         }
 
         function render(matches) {
@@ -2342,16 +2734,24 @@
             var q = input.value.trim();
             if (!q) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
             dropdown.hidden = false;
-            dropdown.innerHTML = '<div class="apt-item" style="cursor:default"><span class="apt-code" style="color:var(--muted)">—</span><span class="apt-name" style="color:var(--muted)">No match in built-in list · try lat/lon below</span></div>';
+            var code = canonQuery(q);
+            var live = isCodeShaped(q) ? state.airportLive[code] : undefined;
+            var msg;
+            if (live === "pending") msg = "Searching FAA registry…";
+            else if (live === null) msg = "No match · try lat/lon below";
+            else msg = "No match in built-in list · try lat/lon below";
+            dropdown.innerHTML = '<div class="apt-item" style="cursor:default"><span class="apt-code" style="color:var(--muted)">—</span><span class="apt-name" style="color:var(--muted)">' + escapeHtml(msg) + '</span></div>';
             return;
           }
           dropdown.hidden = false;
           var html = "";
           for (var i = 0; i < matches.length; i++) {
             var a = matches[i];
-            html += '<div class="apt-item" data-icao="' + escapeHtml(a.icao) + '">' +
-              '<span class="apt-code">' + escapeHtml(a.iata) + '</span>' +
-              '<span class="apt-name">' + escapeHtml(a.city) + ' · ' + escapeHtml(a.name) + '</span>' +
+            var code = a.iata || a.icao || "—";
+            var rest = (a.city || "") + (a.city && a.name ? " · " : "") + (a.name || "");
+            html += '<div class="apt-item" data-iata="' + escapeHtml(a.iata || "") + '" data-icao="' + escapeHtml(a.icao || "") + '">' +
+              '<span class="apt-code">' + escapeHtml(code) + '</span>' +
+              '<span class="apt-name">' + escapeHtml(rest) + '</span>' +
               '</div>';
           }
           dropdown.innerHTML = html;
@@ -2360,16 +2760,23 @@
           for (var j = 0; j < items.length; j++) {
             (function (el) {
               el.addEventListener("click", function () {
-                var icao = el.dataset.icao;
+                var iata = el.dataset.iata || "";
+                var icao = el.dataset.icao || "";
+                var list = getAirports();
                 var apt = null;
-                for (var k = 0; k < AIRPORTS.length; k++) {
-                  if (AIRPORTS[k].icao === icao) { apt = AIRPORTS[k]; break; }
+                for (var k = 0; k < list.length; k++) {
+                  var cand = list[k];
+                  if ((iata && cand.iata === iata) || (icao && cand.icao === icao)) { apt = cand; break; }
+                }
+                if (!apt && icao && state.airportLive[icao] && typeof state.airportLive[icao] === "object") {
+                  apt = state.airportLive[icao];
                 }
                 if (!apt) return;
-                state.center = { lat: apt.lat, lon: apt.lon, label: apt.iata, id: apt.icao };
+                var label = apt.iata || apt.icao;
+                state.center = { lat: apt.lat, lon: apt.lon, label: label, id: apt.icao || apt.iata };
                 syncCoordInputs();
                 markActivePreset();
-                input.value = apt.iata + " · " + apt.city;
+                input.value = label + (apt.city ? " · " + apt.city : "");
                 dropdown.hidden = true;
                 onCenterChanged();
               });
@@ -2388,20 +2795,41 @@
           var m = match(input.value);
           if (!m.length) return false;
           var apt = m[Math.max(0, Math.min(idx, m.length - 1))];
-          state.center = { lat: apt.lat, lon: apt.lon, label: apt.iata, id: apt.icao };
+          var label = apt.iata || apt.icao || "";
+          state.center = { lat: apt.lat, lon: apt.lon, label: label, id: apt.icao || apt.iata };
           syncCoordInputs();
           markActivePreset();
-          input.value = apt.iata + " · " + apt.city;
+          input.value = label + (apt.city ? " · " + apt.city : "");
           dropdown.hidden = true;
           input.blur();
           toggleClear();
           onCenterChanged();
           return true;
         }
-        function applyFirstMatch() { return applyIndex(highlighted < 0 ? 0 : highlighted); }
+        function applyFirstMatch() {
+          if (applyIndex(highlighted < 0 ? 0 : highlighted)) return true;
+          // Nothing bundled matched — if query looks like a code, try
+          // live lookup then apply when it returns.
+          if (isCodeShaped(input.value)) {
+            maybeLiveLookup(input.value);
+          }
+          return false;
+        }
 
-        input.addEventListener("input", function () { toggleClear(); render(match(input.value)); });
-        input.addEventListener("focus", function () { toggleClear(); if (input.value) render(match(input.value)); });
+        input.addEventListener("input", function () {
+          toggleClear();
+          var m = match(input.value);
+          if (!m.length) maybeLiveLookup(input.value);
+          render(match(input.value));
+        });
+        input.addEventListener("focus", function () {
+          toggleClear();
+          if (input.value) {
+            var m = match(input.value);
+            if (!m.length) maybeLiveLookup(input.value);
+            render(match(input.value));
+          }
+        });
         var goBtn = document.getElementById("airportGo");
         if (goBtn) goBtn.addEventListener("click", applyFirstMatch);
         input.addEventListener("keydown", function (e) {
@@ -3210,6 +3638,8 @@
       setupRadarDrag();
       setupSettings();
       setupLeadPicker();
+      setupMapLayerPicker();
+      updateAttributionFooter();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");
