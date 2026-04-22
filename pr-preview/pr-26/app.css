@@ -1027,23 +1027,32 @@
     .alt-range-input::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 18px;
+      width: 16px;
       height: 18px;
-      border-radius: 50%;
       background: var(--accent);
-      border: 2px solid var(--bg);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      /* Home-plate shape: flat top, tapers to a point at the bottom.
+         Apex lands on the track center line (steam-gauge altimeter vibe). */
+      clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+      border: none;
+      border-radius: 0;
       cursor: pointer;
       pointer-events: auto;
-      margin-top: -7px;
+      /* margin-top pushes the thumb so its bottom apex (clip 50% 100%)
+         lands at the runnable-track center. Input height 32, track 14-18,
+         track center 16; thumb height 18 placed with top at track_center -
+         thumb_height = -2, which is margin 14 - (-2) = -16 from runnable-
+         track top. */
+      margin-top: -16px;
     }
     .alt-range-input::-moz-range-thumb {
-      width: 18px;
+      width: 16px;
       height: 18px;
-      border-radius: 50%;
       background: var(--accent);
-      border: 2px solid var(--bg);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+      border: none;
+      border-radius: 0;
       cursor: pointer;
       pointer-events: auto;
     }
