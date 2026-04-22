@@ -989,6 +989,35 @@
         return MAP_LAYERS[state.mapLayer] || MAP_LAYERS.satellite;
       }
 
+      // Tile-load diagnostics. Populated by renderTiles + placeTile, read by
+      // updateTileStatus to paint a user-visible banner when a non-default
+      // map layer is failing (all tiles erroring out = black radar). Silent
+      // when tiles load normally; only noisy when the user has a real
+      // problem worth seeing.
+      var tileLoadState = { layer: "satellite", requested: 0, loaded: 0, errored: 0, lastError: null, renderStartedAt: 0 };
+      function updateTileStatus() {
+        var el = document.getElementById("tileStatus");
+        if (!el) return;
+        var s = tileLoadState;
+        var pending = s.requested - s.loaded - s.errored;
+        var allFailed = s.requested > 0 && s.errored === s.requested;
+        var someFailed = s.requested > 0 && s.errored > 0 && s.loaded === 0;
+        if (s.layer === "satellite") { el.hidden = true; el.textContent = ""; return; }
+        if (allFailed || someFailed) {
+          el.hidden = false;
+          el.className = "tile-status err";
+          var url = s.lastError ? " · " + s.lastError.replace(/^https?:\/\//, "").slice(0, 60) : "";
+          el.textContent = (s.layer.toUpperCase() + " TILES FAILED · 0 OF " + s.requested + " LOADED" + url);
+        } else if (pending > 0) {
+          el.hidden = false;
+          el.className = "tile-status";
+          el.textContent = s.layer.toUpperCase() + " · LOADING " + s.loaded + "/" + s.requested + "…";
+        } else {
+          el.hidden = true;
+          el.textContent = "";
+        }
+      }
+
       function renderTiles() {
         var tileLayer = document.getElementById("tileLayer");
         var labelLayer = document.getElementById("labelLayer");
@@ -997,6 +1026,18 @@
         if (labelLayer) labelLayer.innerHTML = "";
         var center = state.center;
         var layer = currentMapLayer();
+        // Tile-load counters so a non-rendering chart layer surfaces a user-
+        // visible diagnostic rather than a silent black radar. Reset each
+        // render; placeTile's load/error handlers increment these and
+        // updateTileStatus() writes a banner if too many fail.
+        tileLoadState = {
+          layer: state.mapLayer,
+          requested: 0,
+          loaded: 0,
+          errored: 0,
+          lastError: null,
+          renderStartedAt: Date.now()
+        };
         // Chart layers (VFR / IFR) top out lower than satellite; clamp so
         // we don't request tiles ChartBundle will 404 on.
         var z = Math.min(layer.maxZoom, computeTileZoom(center.lat, state.rangeNm));
@@ -1033,8 +1074,18 @@
           img.setAttributeNS(xlinkns, "href", url);
           img.setAttribute("href", url);
           img.setAttribute("image-rendering", "optimizeQuality");
-          img.addEventListener("load", function () { img.classList.add("ready"); });
-          img.addEventListener("error", function () { img.remove(); });
+          tileLoadState.requested += 1;
+          img.addEventListener("load", function () {
+            img.classList.add("ready");
+            tileLoadState.loaded += 1;
+            updateTileStatus();
+          });
+          img.addEventListener("error", function () {
+            img.remove();
+            tileLoadState.errored += 1;
+            tileLoadState.lastError = url;
+            updateTileStatus();
+          });
           parent.appendChild(img);
         }
 
@@ -1908,6 +1959,10 @@
         state.mapLayer = v;
         try { localStorage.setItem("map.layer", v); } catch (e) {}
         syncMapLayerPicker();
+        // Clear any stale failure banner from the previous layer before the
+        // new render's counters populate.
+        var el = document.getElementById("tileStatus");
+        if (el) { el.hidden = true; el.textContent = ""; }
         renderTiles();
         updateAttributionFooter();
       }

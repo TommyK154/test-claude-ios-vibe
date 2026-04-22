@@ -510,6 +510,34 @@
       pointer-events: none;
     }
     .radar-overlay .rcount { color: var(--plane); }
+    /* Second row of the radar overlay: tile-load diagnostic banner.
+       Hidden when the satellite layer is active or when tiles load cleanly;
+       appears when a chart layer is selected and tiles are failing. */
+    .radar-overlay.tile-status-row {
+      top: 36px;
+      justify-content: flex-start;
+      pointer-events: none;
+    }
+    .tile-status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(7, 12, 21, 0.8);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      max-width: calc(100% - 36px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tile-status.err {
+      background: rgba(227, 125, 125, 0.16);
+      border: 1px solid var(--danger);
+      color: #f3b3b3;
+    }
 
     .selected-card {
       background: var(--surface);
