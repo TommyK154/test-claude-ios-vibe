@@ -2617,11 +2617,59 @@
         ];
       }
 
+      // Bbox used specifically for AIS subscriptions. Decoupled from the
+      // radar range via a 30 NM floor — if the user zooms the radar to
+      // 5 NM, the ship subscription should still cover any adjacent port
+      // or shipping lane. The radar still renders only ships visible in
+      // its frustum; this just ensures we're subscribed to enough water.
+      function aisBboxForCenter() {
+        var rangeNm = Math.max(30, state.rangeNm);
+        var dLat = rangeNm / 60;
+        var dLon = rangeNm / (60 * Math.max(0.01, Math.cos(state.center.lat * Math.PI / 180)));
+        return [
+          [state.center.lat - dLat, state.center.lon - dLon],
+          [state.center.lat + dLat, state.center.lon + dLon]
+        ];
+      }
+
       function aisStatus(text, cls) {
         var el = document.getElementById("aisStatus");
         if (!el) return;
         el.textContent = text;
         el.className = "ais-status" + (cls ? " " + cls : "");
+      }
+
+      // Called on initial connect and on every resubscribe. If 30 s elapse
+      // with zero message frames, show an actionable message that
+      // distinguishes cause: a key that never produces frames (account
+      // verification / tier throttle) reads differently than "real" silence.
+      // If error frames did arrive, that was already surfaced by the error
+      // branch in the message handler — don't double-announce.
+      function scheduleNoTrafficWarning() {
+        if (state.aisNoTrafficTimer) clearTimeout(state.aisNoTrafficTimer);
+        state.aisNoTrafficTimer = setTimeout(function () {
+          if (state.aisMessageCount > 0) return;
+          // Any error frame already updated the status to "AIS: <ERROR>".
+          if (state.aisMsgTypes && state.aisMsgTypes.error) return;
+          // Distinguish "nothing at all" from "non-positional frames only."
+          var totalFrames = 0;
+          var hasNonError = false;
+          if (state.aisMsgTypes) {
+            for (var k in state.aisMsgTypes) {
+              if (!Object.prototype.hasOwnProperty.call(state.aisMsgTypes, k)) continue;
+              totalFrames += state.aisMsgTypes[k];
+              if (k && k.toLowerCase() !== "error") hasNonError = true;
+            }
+          }
+          if (totalFrames === 0) {
+            aisStatus("AIS CONNECTED · NO FRAMES IN 30s · check aisstream account verification or free-tier rate limit", "warn");
+          } else if (!hasNonError) {
+            aisStatus("AIS CONNECTED · errors only, no position data · check aisstream account", "warn");
+          } else {
+            aisStatus("AIS CONNECTED · quiet area · try a busy port preset to confirm", "ok");
+          }
+          renderAisDiag();
+        }, 30000);
       }
 
       // Builds a compact JSON snapshot of live session state for bug reports.
@@ -2761,24 +2809,23 @@
             state.aisMsgTypes = {};
             state.aisLastMsgType = "";
             state.aisLoggedSamples = 0;
-            var bb = bboxForCenter();
+            var bb = aisBboxForCenter();
             state.aisBbox = bb;
+            // Subscribe to all message types — filtering to just Class A
+            // PositionReport + ShipStaticData was dropping Class B traffic
+            // (tugs, pilot boats, yachts, fishing craft), which is a big
+            // chunk of what moves around a busy port. aisstream's default
+            // with no FilterMessageTypes is "all types."
             ws.send(JSON.stringify({
               APIKey: state.aisKey,
-              BoundingBoxes: [[bb[0], bb[1]]],
-              FilterMessageTypes: ["PositionReport", "ShipStaticData"]
+              BoundingBoxes: [[bb[0], bb[1]]]
             }));
             aisStatus("AIS CONNECTED · WAITING FOR TRAFFIC", "ok");
             renderAisDiag();
-            // If we don't see a single message in 30 s, downgrade the
-            // status so the user knows it's quiet (vs. broken).
-            if (state.aisNoTrafficTimer) clearTimeout(state.aisNoTrafficTimer);
-            state.aisNoTrafficTimer = setTimeout(function () {
-              if (state.aisMessageCount === 0) {
-                aisStatus("AIS CONNECTED · NO TRAFFIC IN AREA (try moving the map or lowering range)", "ok");
-                renderAisDiag();
-              }
-            }, 30000);
+            // After 30 s of silence, surface an actionable status message.
+            // The branching is in scheduleNoTrafficWarning() so the same
+            // logic fires from both initial connect and resubscribe paths.
+            scheduleNoTrafficWarning();
           });
           ws.addEventListener("message", function (e) {
             try {
@@ -2867,12 +2914,11 @@
 
       function resubscribeAis() {
         if (!state.aisSocket || state.aisSocket.readyState !== 1) return;
-        var bb = bboxForCenter();
+        var bb = aisBboxForCenter();
         try {
           state.aisSocket.send(JSON.stringify({
             APIKey: state.aisKey,
-            BoundingBoxes: [[bb[0], bb[1]]],
-            FilterMessageTypes: ["PositionReport", "ShipStaticData"]
+            BoundingBoxes: [[bb[0], bb[1]]]
           }));
           // Reset per-subscription diagnostics: bbox changed → new stream of
           // messages, old counters would be misleading. Also restart the
@@ -2883,13 +2929,7 @@
           state.aisMsgTypes = {};
           state.aisLastMsgType = "";
           state.aisLoggedSamples = 0;
-          if (state.aisNoTrafficTimer) clearTimeout(state.aisNoTrafficTimer);
-          state.aisNoTrafficTimer = setTimeout(function () {
-            if (state.aisMessageCount === 0) {
-              aisStatus("AIS CONNECTED · NO TRAFFIC IN AREA (try moving the map or lowering range)", "ok");
-              renderAisDiag();
-            }
-          }, 30000);
+          scheduleNoTrafficWarning();
           aisStatus("AIS SUBSCRIBED · " +
                     bb[0][0].toFixed(2) + "," + bb[0][1].toFixed(2) + " → " +
                     bb[1][0].toFixed(2) + "," + bb[1][1].toFixed(2), "ok");

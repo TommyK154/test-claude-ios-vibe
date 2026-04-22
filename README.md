@@ -171,9 +171,21 @@ Ordered roughly by likely ship sequence.
 - **Pause polling when the tab is hidden** — save data when the page is
   in a background tab.
 
+### Refactor follow-ups (from PR #17 three-file split)
+- **Further JS subdivision** — split `app.js` into `state.js` / `fetch.js`
+  / `render.js` / `gesture.js` / `ais.js`. Requires picking a module
+  pattern (ES modules via `<script type="module">` vs. shared-namespace
+  IIFE). Separate PR because it changes evaluation semantics.
+- **Content-Security-Policy `<meta>` tag** — defense-in-depth against
+  injection. Needs careful testing against every fetch origin
+  (adsb.fi, adsb.lol, opensky-network, corsproxy.io, allorigins, ESRI
+  tiles, aisstream, planespotters, adsbdb).
+- **Dead-code sweep** — post-refactor, now that the file layout has
+  settled, spot and remove any unused helpers.
+
 ## Technical
 
-- Single `index.html` file with embedded CSS and JavaScript.
+- Three source files: `index.html` (HTML skeleton), `app.css` (styles), `app.js` (IIFE).
 - Zero build-time dependencies, no CDN script tags.
 - Works opened directly from the filesystem or served from GitHub Pages.
 - Mobile-first layout, 44 px tap targets, safe-area aware for iPhone.
