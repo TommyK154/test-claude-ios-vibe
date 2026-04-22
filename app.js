@@ -267,6 +267,10 @@
         listFilter: "all",        // "all" | "air" | "ground" | "mil" | "notable" | "emerg"
         listSort: "dist",         // "dist" | "alt" | "spd" | "call"
         listSortDesc: false,
+        // Altitude range filter (ft) — applies to the radar AND the list,
+        // stacked with the filter chip. Default 0 / ALT_MAX_FT = "off".
+        altMinFt: 0,
+        altMaxFt: 50000,          // also the slider ceiling; planes > 50k pass when at max
         shipFilter: "all",        // "all" | "underway" | "anchored" | "distress"
         shipSort: "dist",         // "dist" | "spd" | "name"
         shipSortDesc: false
@@ -276,6 +280,10 @@
         state.listFilter = localStorage.getItem("list.filter") || "all";
         state.listSort = localStorage.getItem("list.sort") || "dist";
         state.listSortDesc = localStorage.getItem("list.sortDesc") === "1";
+        var storedMin = parseInt(localStorage.getItem("list.altMin"), 10);
+        var storedMax = parseInt(localStorage.getItem("list.altMax"), 10);
+        if (isFinite(storedMin) && storedMin >= 0 && storedMin <= 50000) state.altMinFt = storedMin;
+        if (isFinite(storedMax) && storedMax >= 0 && storedMax <= 50000 && storedMax >= state.altMinFt) state.altMaxFt = storedMax;
         state.shipFilter = localStorage.getItem("list.shipFilter") || "all";
         state.shipSort = localStorage.getItem("list.shipSort") || "dist";
         state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
@@ -340,11 +348,6 @@
           var tgt = e.target && e.target.closest ? e.target : null;
           var btn = tgt && tgt.closest(".sel-close");
           if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); return; }
-          var trendBtn = tgt && tgt.closest("[data-trend-min]");
-          if (trendBtn) {
-            e.preventDefault(); e.stopPropagation();
-            setTrendMin(trendBtn.getAttribute("data-trend-min"));
-          }
         });
       }
       var liveDot = $("liveDot");
@@ -1028,18 +1031,6 @@
         var shipCount = Object.keys(state.ships || {}).length;
         var contactLine = state.planes.length + (state.aisKey ? " / " + shipCount : "");
         tr.textContent = label + " · " + latStr + "," + lonStr + " · " + state.rangeNm + "NM · " + contactLine;
-        updateRecenterBtn();
-      }
-
-      function updateRecenterBtn() {
-        var btn = document.getElementById("recenterBtn");
-        if (!btn) return;
-        if (state.lastGeo && (state.center.id !== "me" || state.center.id === "custom")) {
-          var dist = Math.abs(state.lastGeo.lat - state.center.lat) + Math.abs(state.lastGeo.lon - state.center.lon);
-          btn.hidden = dist < 0.01;
-        } else {
-          btn.hidden = true;
-        }
       }
 
       // Records a render miss for the selected plane with a reason code and
@@ -1216,13 +1207,13 @@
             path.setAttribute("stroke-linejoin", "round");
             g.appendChild(path);
 
-            // Altitude chevrons — stacked tight against the triangle's base
-            // so the whole marker reads as one unit in cluttered airspace.
-            // Dark outer + colored inner for contrast against satellite imagery.
+            // Altitude chevrons — packed flush with the triangle's trailing
+            // edge so the whole marker reads as one unit. Dark outer + colored
+            // inner for contrast against satellite imagery.
             var chevCount = altitudeChevronCount(p.altFt);
             for (var ci = 1; ci <= chevCount; ci++) {
-              var apexY = 3.0 + (ci * 1.8);
-              var pts = "-2.0," + (apexY + 1.1).toFixed(2) + " 0," + apexY.toFixed(2) + " 2.0," + (apexY + 1.1).toFixed(2);
+              var apexY = 2.8 + (ci * 1.4);
+              var pts = "-1.8," + (apexY + 0.9).toFixed(2) + " 0," + apexY.toFixed(2) + " 1.8," + (apexY + 0.9).toFixed(2);
               var chevShadow = document.createElementNS(svgns, "polyline");
               chevShadow.setAttribute("points", pts);
               chevShadow.setAttribute("fill", "none");
@@ -1283,15 +1274,30 @@
       // the active filter so the card↔list link never feels broken.
       function passesPlaneFilter(p) {
         if (p.hex && p.hex === state.selectedHex) return true;
+        // Chip filter.
+        var okChip;
         switch (state.listFilter) {
-          case "all":     return true;
-          case "air":     return !p.onGround;
-          case "ground":  return !!p.onGround;
-          case "mil":     return !!(state.military && state.military[p.hex]);
-          case "notable": return !!matchNotableCallsign(p.callsign);
-          case "emerg":   return p.squawk === "7500" || p.squawk === "7600" || p.squawk === "7700";
-          default:        return true;
+          case "all":     okChip = true; break;
+          case "air":     okChip = !p.onGround; break;
+          case "ground":  okChip = !!p.onGround; break;
+          case "mil":     okChip = !!(state.military && state.military[p.hex]); break;
+          case "notable": okChip = !!matchNotableCallsign(p.callsign); break;
+          case "emerg":   okChip = p.squawk === "7500" || p.squawk === "7600" || p.squawk === "7700"; break;
+          default:        okChip = true;
         }
+        if (!okChip) return false;
+        // Altitude range filter (stacked). Skip when at default extremes.
+        // Airborne planes with missing altitude always pass (null altFt
+        // shouldn't vanish the marker — user can narrow chip to GROUND
+        // if they want to exclude unknowns). Ground planes always pass
+        // so the ALT slider doesn't conflict with the GROUND chip.
+        if (p.onGround) return true;
+        var altDefault = state.altMinFt === 0 && state.altMaxFt >= 50000;
+        if (altDefault) return true;
+        if (p.altFt == null || !isFinite(p.altFt)) return true;
+        // altMax at 50000 means "no upper bound" — planes above 50k still pass.
+        var upperOk = state.altMaxFt >= 50000 ? true : p.altFt <= state.altMaxFt;
+        return p.altFt >= state.altMinFt && upperOk;
       }
       function planeSortCmp(a, b) {
         var dir = state.listSortDesc ? -1 : 1;
@@ -1400,6 +1406,10 @@
               var active = state.listFilter === f.k ? " active" : "";
               return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
             }).join("") + '</div>');
+          // Altitude range: dual-thumb slider + readout. Two overlaid range
+          // inputs, a shared track behind, and a "fill" bar showing the
+          // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
+          parts.push(renderAltRangeRow());
           parts.push('<div class="chip-row" data-kind="plane-sort"><span class="chip-row-label">SORT</span>' +
             planeSorts.map(function (s) {
               var active = state.listSort === s.k ? " active" : "";
@@ -1433,10 +1443,96 @@
             });
           });
         });
+        wireAltRangeSlider();
+      }
+
+      // Formats a ft value as an aviation flight level ("FL080" for 8,000 ft,
+      // "FL380" for 38,000 ft). Hundreds of feet, zero-padded to 3 digits.
+      // Matches ATC/pilot vocabulary better than "8k ft" on a flight radar.
+      function formatFL(ft) {
+        var fl = Math.round(ft / 100);
+        var s = String(fl);
+        while (s.length < 3) s = "0" + s;
+        return "FL" + s;
+      }
+      function formatAltRangeText() {
+        var lo = state.altMinFt, hi = state.altMaxFt;
+        if (lo === 0 && hi >= 50000) return "ALL";
+        if (lo === 0) return "≤ " + formatFL(hi);
+        if (hi >= 50000) return "≥ " + formatFL(lo);
+        return formatFL(lo) + "–" + formatFL(hi);
+      }
+      function renderAltRangeRow() {
+        var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
+        return '<div class="chip-row alt-range-row' + (active ? " active" : "") + '" data-kind="plane-alt-range">' +
+          '<span class="chip-row-label">ALT</span>' +
+          '<div class="alt-range">' +
+            '<div class="alt-range-track">' +
+              '<div class="alt-range-fill" id="altRangeFill"></div>' +
+            '</div>' +
+            '<input type="range" class="alt-range-input alt-range-min" id="altMinInput" min="0" max="50000" step="500" value="' + state.altMinFt + '" aria-label="Minimum altitude in feet" />' +
+            '<input type="range" class="alt-range-input alt-range-max" id="altMaxInput" min="0" max="50000" step="500" value="' + state.altMaxFt + '" aria-label="Maximum altitude in feet" />' +
+          '</div>' +
+          '<span class="alt-range-readout" id="altRangeReadout">' + formatAltRangeText() + '</span>' +
+        '</div>';
+      }
+      function updateAltRangeUi() {
+        var fill = document.getElementById("altRangeFill");
+        var readout = document.getElementById("altRangeReadout");
+        var row = document.querySelector('[data-kind="plane-alt-range"]');
+        if (fill) {
+          var loPct = state.altMinFt / 50000 * 100;
+          var hiPct = state.altMaxFt / 50000 * 100;
+          fill.style.left = loPct.toFixed(2) + "%";
+          fill.style.width = Math.max(0, hiPct - loPct).toFixed(2) + "%";
+        }
+        if (readout) readout.textContent = formatAltRangeText();
+        if (row) {
+          var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
+          row.classList.toggle("active", active);
+        }
+      }
+      function wireAltRangeSlider() {
+        var altMin = document.getElementById("altMinInput");
+        var altMax = document.getElementById("altMaxInput");
+        if (!altMin || !altMax) return;
+        var STEP = 500;
+        function onInput(e) {
+          var lo = parseInt(altMin.value, 10);
+          var hi = parseInt(altMax.value, 10);
+          // Prevent crossover: if thumbs would cross, push the passive one
+          // one step ahead of the dragged one (keeps a 500 ft minimum band).
+          if (lo > hi - STEP) {
+            if (e.target === altMin) { lo = hi - STEP; altMin.value = lo; }
+            else { hi = lo + STEP; altMax.value = hi; }
+          }
+          state.altMinFt = Math.max(0, lo);
+          state.altMaxFt = Math.min(50000, hi);
+          try {
+            localStorage.setItem("list.altMin", String(state.altMinFt));
+            localStorage.setItem("list.altMax", String(state.altMaxFt));
+          } catch (err) {}
+          updateAltRangeUi();
+          renderRadar();
+          renderListEntries();
+        }
+        altMin.addEventListener("input", onInput);
+        altMax.addEventListener("input", onInput);
+        // Apply initial fill-bar position once the DOM exists.
+        updateAltRangeUi();
       }
 
       function renderList() {
         renderListControls();
+        renderListEntries();
+      }
+
+      // Renders just the list rows (planes + ships) into #listContainer,
+      // leaving #listControls alone. Used by the altitude range slider
+      // which must keep its inputs alive across drag events — rebuilding
+      // the controls mid-drag replaces the input elements and the browser
+      // aborts the drag.
+      function renderListEntries() {
         var html = "";
         if (!state.aisKey) {
           html += '<div class="ships-hint">SHIPS DISABLED · add an aisstream.io key in settings to track vessels</div>';
@@ -1622,18 +1718,15 @@
           alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
         }
         var anomaliesHtml = renderAnomalyChips(p);
-        var controlChipHtml = renderControlChips();
         var missStrip = renderMissStrip();
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
-          CLOSE_BUTTON_HTML +
           missStrip +
+          // Top strip (TRACK + ✕ inline) — close button lives inside
+          // statusRowHtml so it aligns with the TRACK line vertically.
           statusRowHtml +
           '<div class="sel-head">' +
-            '<div class="sel-head-row">' +
-              '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
-              controlChipHtml +
-            '</div>' +
+            '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
             (subtitle ? '<span class="sel-reg">' + subtitle + '</span>' : '') +
           '</div>' +
           alertsHtml +
@@ -1651,18 +1744,24 @@
       }
 
       // --- loading-row helpers ---
+      // Emits the top strip of the selected-plane card: TRACK summary on
+      // the left, ✕ close button on the right. ROUTE used to live here too
+      // but was removed because it's already shown in the pink sel-route
+      // line below the callsign — no need to duplicate. The close button
+      // is inline (not absolutely positioned) so it sits in a predictable
+      // row beside the TRACK text.
       function renderLoadingRow(hex, callsign) {
         var trackStatus = trackStatusText(hex);
-        var routeStatus = routeStatusText(callsign);
-        var photoStatus = photoStatusText(hex);
         function seg(label, value, loading) {
           return '<span class="ld-seg' + (loading ? " loading" : "") + '"><span class="ld-k">' + label + '</span>' +
                  (loading ? '<span class="ld-dot"></span>' : '') +
                  '<span class="ld-v">' + escapeHtml(value) + '</span></span>';
         }
-        return '<div class="loading-row">' +
-          seg("TRACK", trackStatus.text, trackStatus.loading) +
-          seg("ROUTE", routeStatus.text, routeStatus.loading) +
+        return '<div class="sel-top-row">' +
+          '<div class="loading-row">' +
+            seg("TRACK", trackStatus.text, trackStatus.loading) +
+          '</div>' +
+          CLOSE_BUTTON_HTML +
         '</div>';
       }
       function trackStatusText(hex) {
@@ -1697,28 +1796,28 @@
         return { text: "UNAVAILABLE", loading: false };
       }
 
-      // Returns the TREND segmented picker rendered inline on the plane
-      // card — three buttons (1 / 2 / 5 MIN) with the active value
-      // highlighted. Tap any button to jump directly to that length (no
-      // cycling). Replaces the older single cycle-chip where the user had
-      // to tap up to 3 times and couldn't see the other options.
-      function renderControlChips() {
+      // Keeps the standalone LEAD picker's active-button class in sync
+      // with state.trendMin. The picker lives persistently under the
+      // radar (left-justified, mirroring the LEGEND on the right) — it's
+      // no longer rendered inside the plane card. LEAD is the aviation/
+      // weapons-systems term for a projected intercept position (chosen
+      // over "TREND" to avoid confusion with the TRAIL = actual flown
+      // path).
+      function syncLeadPicker() {
+        var picker = document.getElementById("leadPicker");
+        if (!picker) return;
         var tm = state.trendMin || 5;
-        var options = [1, 2, 5];
-        var buttons = options.map(function (m) {
-          var active = (m === tm) ? " active" : "";
-          return '<button type="button" class="sel-trend-btn' + active +
-            '" data-trend-min="' + m + '" aria-label="Trend ' + m + ' min"' +
-            (active ? ' aria-pressed="true"' : '') + '>' + m + '</button>';
-        }).join("");
-        return '<div class="sel-trend-seg" role="group" aria-label="Trend projection length">' +
-          '<span class="sel-trend-label">TREND</span>' +
-          buttons +
-          '<span class="sel-trend-unit">MIN</span>' +
-        '</div>';
+        var btns = picker.querySelectorAll("[data-trend-min]");
+        for (var i = 0; i < btns.length; i++) {
+          var m = parseInt(btns[i].getAttribute("data-trend-min"), 10);
+          var isActive = (m === tm);
+          btns[i].classList.toggle("active", isActive);
+          if (isActive) btns[i].setAttribute("aria-pressed", "true");
+          else btns[i].removeAttribute("aria-pressed");
+        }
       }
 
-      // Called when any TREND segmented button is tapped. Jumps directly
+      // Called when any LEAD segmented button is tapped. Jumps directly
       // to the requested length (1, 2, or 5 min) and persists.
       function setTrendMin(n) {
         var v = parseInt(n, 10);
@@ -1726,8 +1825,21 @@
         if (state.trendMin === v) return;
         state.trendMin = v;
         try { localStorage.setItem("trend.minutes", String(v)); } catch (e) {}
+        syncLeadPicker();
         renderOverlays();
         renderSelected();
+      }
+
+      function setupLeadPicker() {
+        var picker = document.getElementById("leadPicker");
+        if (!picker) return;
+        picker.addEventListener("click", function (e) {
+          var tgt = e.target && e.target.closest ? e.target.closest("[data-trend-min]") : null;
+          if (!tgt) return;
+          e.preventDefault();
+          setTrendMin(tgt.getAttribute("data-trend-min"));
+        });
+        syncLeadPicker();
       }
 
       function renderAnomalyChips(p) {
@@ -2988,27 +3100,6 @@
         return NAV_STATUS_TEXT[n];
       }
 
-      function setupRecenterBtn() {
-        var btn = document.getElementById("recenterBtn");
-        if (!btn) return;
-        btn.addEventListener("click", function () {
-          if (state.lastGeo) {
-            state.center = {
-              lat: state.lastGeo.lat,
-              lon: state.lastGeo.lon,
-              label: "Current",
-              id: "me"
-            };
-            syncCoordInputs();
-            markActivePreset();
-            renderTiles();
-            fetchNow();
-          } else {
-            useGeolocation();
-          }
-        });
-      }
-
       function initGeo() {
         renderTiles();
         var declined = false;
@@ -3117,8 +3208,8 @@
       buildPresets();
       setupAirportSearch();
       setupRadarDrag();
-      setupRecenterBtn();
       setupSettings();
+      setupLeadPicker();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");

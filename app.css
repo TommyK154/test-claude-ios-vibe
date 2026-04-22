@@ -442,24 +442,6 @@
       position: relative;
       overflow: hidden;
     }
-    .recenter-btn {
-      display: block;
-      width: 100%;
-      margin-bottom: 8px;
-      min-height: 40px;
-      padding: 10px 12px;
-      background: var(--accent-soft);
-      border: 1px solid var(--accent-dim);
-      color: var(--accent);
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.16em;
-      border-radius: 4px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .recenter-btn:active { background: var(--accent); color: #0a1018; }
     .radar-svg {
       width: 100%;
       height: auto;
@@ -552,8 +534,37 @@
       display: flex;
       flex-direction: column;
       gap: 2px;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
+    /* Top strip of the plane card: TRACK status on the left, ✕ close button
+       on the right, aligned on the same row. Replaces the old absolute-
+       positioned close button for the plane card (ship + placeholder cards
+       still use the absolute variant). */
+    .sel-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 2px;
+    }
+    .sel-top-row .sel-close {
+      position: relative;
+      top: auto;
+      right: auto;
+      width: 28px;
+      height: 28px;
+      font-size: 15px;
+      flex: 0 0 auto;
+      /* Compact visual button but the ::before pseudo expands the hit
+         region back out to 44 CSS px so the tap target still meets the
+         mobile-first minimum. */
+    }
+    .sel-top-row .sel-close::before {
+      content: "";
+      position: absolute;
+      inset: -8px;
+    }
+    .sel-top-row .loading-row { flex: 1; min-width: 0; }
     .sel-head-row {
       display: flex;
       align-items: center;
@@ -562,13 +573,13 @@
       min-height: 32px;
     }
     .sel-call {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
       letter-spacing: 0.02em;
       font-variant-numeric: tabular-nums;
     }
     .sel-reg {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
@@ -669,14 +680,14 @@
     .sel-trend-seg {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
+      gap: 6px;
+      padding: 6px 10px;
       border: 1px solid var(--border-2);
-      border-radius: 4px;
+      border-radius: 5px;
       background: var(--surface-2);
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: 0.1em;
     }
     .sel-trend-label, .sel-trend-unit {
@@ -684,8 +695,8 @@
     }
     .sel-trend-btn {
       position: relative;
-      min-width: 22px;
-      padding: 4px 6px;
+      min-width: 30px;
+      padding: 7px 10px;
       border: 1px solid var(--border-2);
       background: var(--bg);
       color: var(--text);
@@ -700,7 +711,7 @@
     .sel-trend-btn::before {
       content: "";
       position: absolute;
-      inset: -10px -4px;
+      inset: -8px -4px;
     }
     .sel-trend-btn.active {
       background: var(--accent);
@@ -708,11 +719,30 @@
       color: #0a1018;
     }
 
-    .legend {
+    /* Row under the radar that hosts the persistent LEAD picker (left)
+       and the LEGEND disclosure (right). Both always visible — LEAD is
+       no longer nested inside the plane card. */
+    .radar-extras {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
       margin: 8px 0 16px;
+    }
+    .lead-picker-standalone {
+      /* Slightly pop the outline so it doesn't melt into the dark bg when
+         nothing is selected (no gold card below to anchor it visually).
+         min-height matches the LEGEND disclosure pill (also 44 px) so
+         the two controls sit at equal height across the row. */
+      border-color: var(--border-2);
+      min-height: 44px;
+      box-sizing: border-box;
+    }
+    .legend {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
+      flex: 0 0 auto;
     }
     .legend-toggle {
       display: inline-flex;
@@ -818,7 +848,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 8px 0 0;
+      margin: 4px 0 0;
       font-family: var(--mono);
       color: var(--text);
       flex-wrap: wrap;
@@ -826,7 +856,7 @@
     .sel-route .sel-airport {
       color: #ff4ddb;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 0.08em;
     }
     .sel-route .sel-arrow { color: #ff4ddb; font-weight: 700; }
@@ -977,6 +1007,120 @@
       color: var(--accent);
       border-color: var(--accent);
     }
+
+    /* Dual-thumb altitude range slider. Two overlapped <input type="range">
+       elements with transparent tracks; a shared track + a fill bar
+       positioned between the thumbs give the dual-range visual. Input
+       bodies are pointer-events:none so only the thumbs respond to touch
+       (prevents the full-width invisible track from eating radar taps). */
+    .alt-range-row { gap: 8px; }
+    .alt-range-row .chip-row-label.alt-label-active,
+    .alt-range-row.active .chip-row-label { color: var(--accent); }
+    .alt-range {
+      position: relative;
+      flex: 1;
+      height: 32px;
+      min-width: 120px;
+    }
+    /* Track is inset by half the thumb width on each side so its visible
+       span matches the range that the thumb apex can actually reach.
+       Fill lives inside the track, so its 0-100% left/width maps 1:1 to
+       the slider value range — apex of min-thumb touches fill-left when
+       altMin=0, apex of max-thumb touches fill-right when altMax=max. */
+    .alt-range-track {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      top: 50%;
+      height: 4px;
+      transform: translateY(-50%);
+      background: var(--border-2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .alt-range-fill {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .alt-range-input {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      width: 100%;
+      height: 32px;
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+      outline: none;
+      box-sizing: border-box;
+    }
+    /* Slim runnable-tracks (4 px) matching the visible .alt-range-track,
+       with auto-generated top/bottom margin to vertically center the track
+       inside the 32 px input. Thumb's negative margin-top lifts its
+       center line onto the track center. */
+    .alt-range-input::-webkit-slider-runnable-track {
+      background: transparent;
+      height: 4px;
+      border: none;
+      margin: 14px 0;
+    }
+    .alt-range-input::-moz-range-track {
+      background: transparent;
+      height: 4px;
+      border: none;
+    }
+    .alt-range-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 18px;
+      background: var(--accent);
+      /* Home-plate shape with softened corners: quadratic curves at the
+         top corners, the shoulders where it starts narrowing, and the
+         apex tip. Coordinates in CSS px matching the 16x18 thumb body.
+         Apex (bottom point) lands on the track center line (steam-gauge
+         altimeter vibe). */
+      clip-path: path('M 3 0 L 13 0 Q 16 0 16 3 L 16 10 Q 16 11.2 15 11.8 L 9 17.4 Q 8 18 7 17.4 L 1 11.8 Q 0 11.2 0 10 L 0 3 Q 0 0 3 0 Z');
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+      pointer-events: auto;
+      /* margin-top pushes the thumb so its bottom apex lands at the
+         runnable-track center. Input height 32, track 14-18, track center
+         16; 18 px thumb placed with top at -2 = margin 14 - (-2) = -16. */
+      margin-top: -16px;
+    }
+    .alt-range-input::-moz-range-thumb {
+      width: 16px;
+      height: 18px;
+      background: var(--accent);
+      clip-path: path('M 3 0 L 13 0 Q 16 0 16 3 L 16 10 Q 16 11.2 15 11.8 L 9 17.4 Q 8 18 7 17.4 L 1 11.8 Q 0 11.2 0 10 L 0 3 Q 0 0 3 0 Z');
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .alt-range-readout {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      min-width: 90px;
+      text-align: right;
+    }
+    .alt-range-row.active .alt-range-readout { color: var(--accent); }
+
     .list-count {
       font-family: var(--mono);
       font-size: 10px;
