@@ -17,6 +17,17 @@
       --plane: #5ce0ca;
       --plane-selected: #f0c674;
       --plane-ground: #6b7c91;
+      /* Altitude band palette — cool colors reserved for altitude so they
+         never collide with warm interest colors (gold/orange/red) below.
+         Progression: green-teal (low) -> cyan (mid) -> blue -> purple. */
+      --alt-low-very: #3ea390;
+      --alt-low:      #4fc8b5;
+      --alt-mid:      #5ce0ca;
+      --alt-high:     #5fb5e8;
+      --alt-vhigh:    #6a8ae8;
+      --alt-extreme:  #a06ee8;
+      --alt-unknown:  #5a6a80;
+      --mil-outline:  #ff9e4a;
       --danger: #e37d7d;
       --warn: #d9b04a;
       --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -769,6 +780,42 @@
       color: var(--muted);
     }
     .legend-body .lg-v { color: var(--text); font-size: 12px; }
+    .legend-body .lg-alt-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      flex: 1;
+    }
+    .legend-body .lg-alt-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      min-width: 0;
+    }
+    .legend-body .lg-alt-swatch {
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid rgba(7, 12, 21, 0.6);
+    }
+    .legend-body .lg-alt-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .legend-body .lg-stroke {
+      width: 16px; height: 10px;
+      border-radius: 2px;
+      background: transparent;
+      border: 1.5px solid currentColor;
+      flex: 0 0 auto;
+    }
     .sel-route {
       display: flex;
       align-items: center;

@@ -132,6 +132,27 @@ both. When editing:
 `state.planes` as a secondary defence. Trail / route / trend vector are
 never drawn for `lastSelectedPlane` — deselect strips overlays by design.
 
+### Altitude bands vs interest signals (two-channel rule)
+
+The marker encodes two independent axes using two visual channels:
+
+- **Triangle fill = altitude band** (ambient, always on for every
+  airborne plane). `altitudeBandFill(altFt)` maps `p.altFt` to one of
+  `--alt-low-very` / `--alt-low` / `--alt-mid` / `--alt-high` /
+  `--alt-vhigh` / `--alt-extreme` / `--alt-unknown`. `onGround === true`
+  short-circuits to `--plane-ground`.
+- **Halo / stroke = interest** (sparse). Selected → gold halo + white
+  stroke; emergency → pulsing red halo; military → orange stroke
+  (`--mil-outline`). None of these change the fill — altitude stays
+  readable through the halo or around the outline.
+
+The palette is split so the two channels never collide: cool colors
+(green / cyan / blue / purple) belong to altitude; warm colors (gold /
+orange / red) belong to interest. If you add a new marker state, pick
+a channel deliberately. Don't shove a new category into the fill —
+that's altitude's channel, and the user relies on it to skim the
+traffic picture without tapping every plane.
+
 ### Motion ticker (dead reckoning)
 
 `deadReckonTick` runs at 1 Hz and advances every plane / ship's *display*

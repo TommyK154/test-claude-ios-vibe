@@ -1062,6 +1062,22 @@
         }, 2050);
       }
 
+      // Altitude band -> CSS color var for a plane's triangle fill. Gives every
+      // airborne plane an at-a-glance altitude signal so the user can read the
+      // traffic picture without tapping. Cool-color palette is reserved for
+      // altitude; warm colors (gold/orange/red) stay reserved for interest
+      // signals (selected / military / emergency) rendered via halo or stroke.
+      // Ground case is handled by the caller — stationary semantics win there.
+      function altitudeBandFill(altFt) {
+        if (typeof altFt !== "number" || !isFinite(altFt)) return "var(--alt-unknown)";
+        if (altFt < 5000)  return "var(--alt-low-very)";   // approach / departure / pattern
+        if (altFt < 15000) return "var(--alt-low)";         // GA cruise, low IFR
+        if (altFt < 25000) return "var(--alt-mid)";         // regional jet cruise
+        if (altFt < 35000) return "var(--alt-high)";        // typical airliner cruise
+        if (altFt < 45000) return "var(--alt-vhigh)";       // long-haul cruise
+        return "var(--alt-extreme)";                         // bizjet / military / unusual
+      }
+
       function renderRadar() {
         radarCount.textContent = state.planes.length;
         updateTacReadout();
@@ -1164,11 +1180,11 @@
           var isMil = state.military && state.military[p.hex] ? true : false;
           var sq = (p.squawk || "").toString();
           var isEmergency = (sq === "7500" || sq === "7600" || sq === "7700");
-          var color = isEmergency ? "#ff5a5a"
-            : p.onGround ? "var(--plane-ground)"
-            : isSel ? "var(--plane-selected)"
-            : isMil ? "#ff9e4a"
-            : "var(--plane)";
+          // Altitude on fill; interest on halo/stroke. Ground stays gray
+          // (stationary semantics). Selected / emergency / military all keep
+          // altitude-banded fill so altitude is always readable; the gold
+          // halo, pulsing red halo, and orange stroke below convey interest.
+          var color = p.onGround ? "var(--plane-ground)" : altitudeBandFill(p.altFt);
 
           // tap hit area
           var hit = document.createElementNS(svgns, "circle");
@@ -1191,8 +1207,15 @@
             var path = document.createElementNS(svgns, "polygon");
             path.setAttribute("points", "0,-4.2 3,4.2 0,2.6 -3,4.2");
             path.setAttribute("fill", color);
-            path.setAttribute("stroke", isSel ? "#fff" : "rgba(7,12,21,0.95)");
-            path.setAttribute("stroke-width", isSel ? "0.6" : "0.5");
+            // Stroke priority: selected (white) > military (orange) > default.
+            // Orange stroke replaces the old orange fill for military so the
+            // altitude signal underneath is still readable.
+            var strokeColor, strokeWidth;
+            if (isSel) { strokeColor = "#fff"; strokeWidth = "0.6"; }
+            else if (isMil) { strokeColor = "var(--mil-outline)"; strokeWidth = "0.8"; }
+            else { strokeColor = "rgba(7,12,21,0.95)"; strokeWidth = "0.5"; }
+            path.setAttribute("stroke", strokeColor);
+            path.setAttribute("stroke-width", strokeWidth);
             path.setAttribute("stroke-linejoin", "round");
             g.appendChild(path);
           }

@@ -148,9 +148,21 @@
         <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
         <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Trend</span><span class="lg-v">1 / 2 / 5 min projection at current speed &amp; heading · tap TREND chip on the selected card to cycle</span></div>
         <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold halo marks the selected contact</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Pulsing red halo: squawk 7500 / 7600 / 7700</span></div>
-        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange: flagged military / notable callsign</span></div>
+        <div class="lg-row">
+          <span class="lg-k">Altitude</span>
+          <div class="lg-alt-grid">
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#6b7c91"></span><span class="lg-alt-label">Ground</span></div>
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#3ea390"></span><span class="lg-alt-label">&lt; 5k</span></div>
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#4fc8b5"></span><span class="lg-alt-label">5–15k</span></div>
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#5ce0ca"></span><span class="lg-alt-label">15–25k</span></div>
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#5fb5e8"></span><span class="lg-alt-label">25–35k</span></div>
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#6a8ae8"></span><span class="lg-alt-label">35–45k</span></div>
+            <div class="lg-alt-cell"><span class="lg-alt-swatch" style="background:#a06ee8"></span><span class="lg-alt-label">45k+</span></div>
+          </div>
+        </div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold halo overlays any altitude — signals your tap, not altitude</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Pulsing red halo: squawk 7500 / 7600 / 7700 · altitude still readable through the halo</span></div>
+        <div class="lg-row"><span class="lg-stroke" style="color:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange outline around the triangle (flagged military / notable callsign)</span></div>
         <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel (SEA layer)</span></div>
       </div>
     </div>

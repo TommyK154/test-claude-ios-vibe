@@ -153,6 +153,13 @@ Ordered roughly by likely ship sequence.
 - **Day/night terminator** — render a shaded SVG polygon over the map
   following the solar terminator. Pure math (subsolar lat/lon from UTC),
   recompute every 60 s. No external API; no feature dependency.
+- **VFR/IFR chart overlay** — toggle to replace (or overlay) the ESRI
+  satellite base with a FAA VFR sectional or low-altitude IFR enroute
+  chart. Source candidates: OpenAIP tiles (aeronautical layer on OSM
+  base), vfrmap.com (US-only), aviationcharts.net. Needs research on
+  free-tier CORS behavior and update cadence before implementation.
+  Origin: user's friends said "satellite overlay isn't super useful
+  but showing where someone is on the VFR chart is really useful".
 - **Weather radar overlay** (stretch, optional).
 
 ### Gesture / interaction
