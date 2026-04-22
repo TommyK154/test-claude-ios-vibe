@@ -1727,14 +1727,14 @@
         var missStrip = renderMissStrip();
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
-          CLOSE_BUTTON_HTML +
           missStrip +
+          // Top strip (TRACK + ✕ inline) — close button now lives inside
+          // statusRowHtml so it aligns with the TRACK line vertically.
           statusRowHtml +
+          // LEAD picker on its own right-aligned row, directly below the ✕.
+          '<div class="sel-controls-row">' + controlChipHtml + '</div>' +
           '<div class="sel-head">' +
-            '<div class="sel-head-row">' +
-              '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
-              controlChipHtml +
-            '</div>' +
+            '<span class="sel-call">' + escapeHtml(headline) + '</span>' +
             (subtitle ? '<span class="sel-reg">' + subtitle + '</span>' : '') +
           '</div>' +
           alertsHtml +
@@ -1752,18 +1752,24 @@
       }
 
       // --- loading-row helpers ---
+      // Emits the top strip of the selected-plane card: TRACK summary on
+      // the left, ✕ close button on the right. ROUTE used to live here too
+      // but was removed because it's already shown in the pink sel-route
+      // line below the callsign — no need to duplicate. The close button
+      // is inline (not absolutely positioned) so it sits in a predictable
+      // row beside the TRACK text.
       function renderLoadingRow(hex, callsign) {
         var trackStatus = trackStatusText(hex);
-        var routeStatus = routeStatusText(callsign);
-        var photoStatus = photoStatusText(hex);
         function seg(label, value, loading) {
           return '<span class="ld-seg' + (loading ? " loading" : "") + '"><span class="ld-k">' + label + '</span>' +
                  (loading ? '<span class="ld-dot"></span>' : '') +
                  '<span class="ld-v">' + escapeHtml(value) + '</span></span>';
         }
-        return '<div class="loading-row">' +
-          seg("TRACK", trackStatus.text, trackStatus.loading) +
-          seg("ROUTE", routeStatus.text, routeStatus.loading) +
+        return '<div class="sel-top-row">' +
+          '<div class="loading-row">' +
+            seg("TRACK", trackStatus.text, trackStatus.loading) +
+          '</div>' +
+          CLOSE_BUTTON_HTML +
         '</div>';
       }
       function trackStatusText(hex) {
