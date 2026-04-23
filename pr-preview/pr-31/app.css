@@ -912,14 +912,14 @@
         0 1px 0 rgba(255, 255, 255, 0.35),
         0 2px 1px rgba(0, 0, 0, 0.4);
       pointer-events: none;
-      transform: rotate(-6deg);
+      transform: rotate(-3deg);
     }
     /* Three distinct slants so the stickers read as hand-applied, not
-       machine-stamped. Small angles — exaggeration would cross corners
-       outside the button bounds and look unintentional. */
+       machine-stamped. All kept within ±5° — any more reads as
+       intentional / decorative instead of imperfect-human. */
     .map-layer-option.inop[data-map-layer="sectional"]::after { transform: rotate(-4deg); }
     .map-layer-option.inop[data-map-layer="ifr-low"]::after   { transform: rotate(5deg); }
-    .map-layer-option.inop[data-map-layer="ifr-high"]::after  { transform: rotate(-9deg); }
+    .map-layer-option.inop[data-map-layer="ifr-high"]::after  { transform: rotate(-5deg); }
 
     /* LEAD pill — collapses to label+value, expands to 3-option segmented
        on tap. Width transitions + options stagger-fade in for a tactile feel. */
