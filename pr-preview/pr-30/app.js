@@ -1084,13 +1084,17 @@
         if (allFailed || someFailed) {
           el.hidden = false;
           el.className = "tile-status err";
-          // Front-load the diagnostic info so CSS ellipsis (which clips at
-          // the container edge on narrow screens) eats the redundant tail
-          // instead of the useful path. Path first (z/x/y), then fail count.
-          // Banner is already red via .err — "FAILED" suffix is redundant
-          // visual; kept only as a fallback for screenshots that crop color.
-          var path = s.lastError ? s.lastError.replace(/^https?:\/\/[^/]+/, "") : "(no url)";
-          el.textContent = path + " · " + s.errored + "/" + s.requested + " FAILED · " + s.layer.toUpperCase();
+          // Unwrap a corsproxy.io / allorigins wrapper so the inner tile
+          // path is readable. Without this, a proxied URL shows as an
+          // unreadable URL-encoded blob. Then strip protocol + hostname
+          // so only the /path?query remains — the diagnostic signal.
+          // Layer name is redundant (user already sees it in the pill),
+          // so dropped from the banner to save horizontal space.
+          var raw = s.lastError || "";
+          var inner = (raw.match(/[?&]url=([^&]+)/) || [])[1];
+          var target = inner ? decodeURIComponent(inner) : raw;
+          var path = target ? target.replace(/^https?:\/\/[^/]+/, "") : "(no url)";
+          el.textContent = path + " · " + s.errored + "/" + s.requested + " FAILED";
         } else if (pending > 0) {
           el.hidden = false;
           el.className = "tile-status";
