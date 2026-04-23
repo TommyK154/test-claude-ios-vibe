@@ -309,42 +309,65 @@ data; the concentric rings are pure distance references (no clip-path).
   effective filter is `predicate_set AND predicate_range`.
   Each option reshapes the existing UX in a different way. Deferred
   until we have a concrete use case that forces a pick.
-- **Route lookups misrepresenting today's flight**: two failure
-  modes, partly fixed.
-  1. *Cross-aircraft callsign reuse* — regional carriers reuse a
-     callsign across successive flights on the same day with
-     different aircraft. Example (2026-04-22): `QXE2316 SJC→LAX`
-     earlier, `QXE2316 SAN→RDM` on a different hex later. **Fixed
-     in PR #35** via a compound cache key `callsign|hex` at
-     `routeCacheKey()` in `app.js`; each `callsign+hex` pair gets
-     its own cache entry, so the morning flight's route can't leak
-     onto the afternoon flight's aircraft.
-  2. *Broadcast callsign doesn't match today's flight* — the
-     ADS-B callsign the pilot sets in the transponder can be stale
-     from a prior leg (or `api.adsbdb.com/v0/callsign/{callsign}`
-     can return a filed "typical" route that doesn't match today's
-     actual routing). The cache key is internally consistent, but
-     the *source* is unreliable. Confirmed 2026-04-23: N17327
-     (hex `A12710`) broadcasting `UAL2192` at SFO on approach /
-     departure (350 ft, heading 299°, 1 NM from center). adsbdb
-     returned `UAL2192 → PHL→ORD`. Apple flight status showed the
-     actual flight was `UA822 MEX→SFO`. **Not fixed.** Candidate
-     directions:
-     - (a) **Geography cross-check at render time**: if both
-       origin.lat/lon and destination.lat/lon of the cached route
-       are > ~1000 NM from the plane's current position, suppress
-       the route line + card block and optionally show an
-       uncertainty chip. Cheap (two distance calcs per render).
-       Would have caught the SFO example — both PHL and ORD are
-       thousands of NM from SFO.
-     - (b) **Re-fetch on selection** rather than session-long TTL,
-       to catch typical-route-vs-today-route drift. Doesn't help
-       the stale-transponder case; does help if adsbdb updates
-       intraday.
-     - (c) **Cross-reference with a live-flight-status API** (e.g.
-       whatever Apple's using). Out of scope for this project —
-       would require a new API dependency.
-     (a) is the strongest next step.
+- **Route lookups misrepresenting today's flight**: the app caches
+  filed routes from `api.adsbdb.com/v0/callsign/{callsign}` in
+  `state.routes[callsign]` for the duration of the session. We've
+  observed cases where the card shows a route that doesn't match
+  what the aircraft is actually flying. The underlying mechanism
+  has *not* been isolated — the evidence is consistent with
+  several distinct mechanisms and we don't yet have a controlled
+  reproduction that distinguishes them.
+
+  Observed cases (treat as anecdotal, not yet diagnosed):
+  - 2026-04-22: app showed `QXE2316 SJC→LAX` while the live
+    aircraft (N628QX, hex `ae5a1c`) was flying SAN→RDM per
+    Apple Wallet + carrier status. Horizon Air is known to
+    reuse the `QXE2316` callsign across its morning and
+    afternoon legs. Whether this was the same airframe doing
+    two legs or two different airframes under the same callsign
+    in one app session wasn't recorded.
+  - 2026-04-23: N17327 (hex `A12710`) broadcasting `UAL2192`
+    on approach/departure at SFO (350 ft, heading 299°, 1 NM
+    from center). adsbdb returned `UAL2192 → PHL→ORD`. Apple
+    flight status showed the actual flight was `UA822 MEX→SFO`.
+    Most likely explanation: the pilot kept a stale transponder
+    callsign from a prior leg.
+
+  Candidate mechanisms (none confirmed):
+  - *Stale broadcast callsign* — pilot didn't update the
+    transponder after a previous leg. Most likely for the
+    UAL2192 case; plausible for QXE2316.
+  - *Stale adsbdb filing* — the API returns a typical/first
+    filing and hasn't caught up with today's actual routing.
+  - *Cross-aircraft cache collision in our app* — two different
+    aircraft both broadcast the same callsign inside one session,
+    and the first's cached route is served on the second's
+    lookup. Plausible in theory given the flat `state.routes`
+    key, never observed directly.
+
+  Candidate fixes (each addresses a different subset):
+  - **Geography cross-check at render time**: if both
+    `route.origin.lat/lon` and `route.destination.lat/lon` are
+    > ~1000 NM from the plane's current position, suppress the
+    route line + card block. Cheap (two distance calcs per
+    render). Would have caught both observed cases regardless
+    of root cause. **Strongest next step.**
+  - **Re-fetch on selection** instead of session-long cache —
+    addresses stale-adsbdb-filing only. Doesn't help stale
+    transponder.
+  - **Compound cache key (`callsign|hex`)** — rules out only
+    the cross-aircraft-collision mechanism. Shipped as PR #35
+    commit 1 then reverted: it didn't map to either observed
+    case, and the cost (one extra adsbdb call per new hex
+    broadcasting a known callsign) wasn't worth the defensive
+    value. Don't re-add without a confirmed cross-aircraft
+    repro.
+  - **Cross-reference a live-flight-status API** (e.g. whatever
+    Apple uses) — ground truth but needs a new dependency. Out
+    of scope for this project.
+
+  Deferred. Geography cross-check is the leading candidate for
+  the next PR in this area.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,
