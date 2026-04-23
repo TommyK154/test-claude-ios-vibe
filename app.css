@@ -912,14 +912,15 @@
         0 1px 0 rgba(255, 255, 255, 0.35),
         0 2px 1px rgba(0, 0, 0, 0.4);
       pointer-events: none;
-      transform: rotate(-3deg);
+      transform: rotate(-2deg);
     }
     /* Three distinct slants so the stickers read as hand-applied, not
-       machine-stamped. All kept within ±5° — any more reads as
-       intentional / decorative instead of imperfect-human. */
-    .map-layer-option.inop[data-map-layer="sectional"]::after { transform: rotate(-4deg); }
-    .map-layer-option.inop[data-map-layer="ifr-low"]::after   { transform: rotate(5deg); }
-    .map-layer-option.inop[data-map-layer="ifr-high"]::after  { transform: rotate(-5deg); }
+       machine-stamped. All kept within ±4°. IFR Low : IFR High
+       magnitudes sit at ~golden ratio (4 : 2.5 ≈ 1.6 : 1) in opposite
+       directions — pleasing asymmetry without looking deliberate. */
+    .map-layer-option.inop[data-map-layer="sectional"]::after { transform: rotate(-3deg); }
+    .map-layer-option.inop[data-map-layer="ifr-low"]::after   { transform: rotate(4deg); }
+    .map-layer-option.inop[data-map-layer="ifr-high"]::after  { transform: rotate(-2.5deg); }
 
     /* LEAD pill — collapses to label+value, expands to 3-option segmented
        on tap. Width transitions + options stagger-fade in for a tactile feel. */
