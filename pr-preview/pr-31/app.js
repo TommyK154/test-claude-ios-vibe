@@ -2021,7 +2021,11 @@
           var age = now - log[i].t;
           if (age > 2000) return "";
           var ageStr = age < 1000 ? age + "ms ago" : Math.round(age / 100) / 10 + "s ago";
-          return '<div class="sel-alert warn">⚠ MARKER HIDDEN · ' + log[i].reason + ' · ' + ageStr + '</div>';
+          // Visible text is intentionally generic — internal reason codes
+          // (projection.nonFinite, latlon.nonFinite, etc.) are kept in
+          // state.selectedMissLog for diagnosis but never surfaced to
+          // the user.
+          return '<div class="sel-alert warn">⚠ MARKER BRIEFLY HIDDEN · ' + ageStr + '</div>';
         }
         return "";
       }
@@ -3411,11 +3415,11 @@
             }
           }
           if (totalFrames === 0) {
-            aisStatus("AIS CONNECTED · NO FRAMES IN 30s · check aisstream account verification or free-tier rate limit", "warn");
+            aisStatus("AIS CONNECTED · NO SHIP DATA · verify aisstream key or try a busy port", "warn");
           } else if (!hasNonError) {
-            aisStatus("AIS CONNECTED · errors only, no position data · check aisstream account", "warn");
+            aisStatus("AIS CONNECTED · RECEIVING ERRORS · verify aisstream key", "warn");
           } else {
-            aisStatus("AIS CONNECTED · quiet area · try a busy port preset to confirm", "ok");
+            aisStatus("AIS CONNECTED · QUIET AREA · try a busy port", "ok");
           }
           renderAisDiag();
         }, 30000);
@@ -3505,7 +3509,7 @@
               }
               if (mt && mt.toLowerCase() === "error") {
                 var err = msg.Error || msg.error || msg.message || "unknown";
-                aisStatus("AIS: " + String(err).toUpperCase(), "err");
+                aisStatus("AIS CONNECTION ERROR · retrying", "err");
                 renderAisDiag();
                 return;
               }
@@ -3572,7 +3576,7 @@
             aisStatus("AIS ERROR · CHECK KEY", "err");
           });
         } catch (err) {
-          aisStatus("AIS FAILED: " + (err && err.message ? err.message : "unknown"), "err");
+          aisStatus("AIS FAILED · check aisstream key", "err");
         }
       }
 
