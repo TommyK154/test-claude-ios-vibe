@@ -1045,6 +1045,7 @@
         "sectional": {
           label: "VFR Sectional",
           url: function (z, x, y) { return faaArcgisUrl("VFR_Sectional", z, x, y); },
+          minZoom: 8,
           maxZoom: 12,
           hasLabels: false,
           attribution: "VFR Sectional © FAA · ArcGIS Online · US only"
@@ -1052,6 +1053,7 @@
         "ifr-low": {
           label: "IFR Low",
           url: function (z, x, y) { return faaArcgisUrl("IFR_Enroute_Low", z, x, y); },
+          minZoom: 8,
           maxZoom: 12,
           hasLabels: false,
           attribution: "IFR Low Enroute © FAA · ArcGIS Online · US only"
@@ -1059,6 +1061,7 @@
         "ifr-high": {
           label: "IFR High",
           url: function (z, x, y) { return faaArcgisUrl("IFR_Enroute_High", z, x, y); },
+          minZoom: 8,
           maxZoom: 12,
           hasLabels: false,
           attribution: "IFR High Enroute © FAA · ArcGIS Online · US only"
@@ -1171,9 +1174,14 @@
           lastError: null,
           renderStartedAt: Date.now()
         };
-        // Chart layers (VFR / IFR) top out lower than satellite; clamp so
-        // we don't request tiles ChartBundle will 404 on.
-        var z = Math.min(layer.maxZoom, computeTileZoom(center.lat, state.rangeNm));
+        // Chart layers have a publisher-defined LOD range (FAA's ArcGIS
+        // tiles exist at z=8..12 only). Clamp both ends so we don't
+        // request tiles the service will 404 on at very wide or very
+        // close zoom. Below minZoom we render the coarsest available
+        // tile stretched out (already blocky, not a regression); above
+        // maxZoom we render the deepest tile upscaled.
+        var rawZ = computeTileZoom(center.lat, state.rangeNm);
+        var z = Math.max(layer.minZoom || 0, Math.min(layer.maxZoom, rawZ));
         var n = Math.pow(2, z);
         var latRad = center.lat * Math.PI / 180;
         var centerTileX = (center.lon + 180) / 360 * n;
