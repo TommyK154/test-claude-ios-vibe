@@ -2939,12 +2939,21 @@
         });
       }
 
+      // Pause every poll-cadence timer when the tab is backgrounded, so we
+      // don't burn API credits on a view the user isn't watching. Streaming
+      // (AIS WebSocket) and local compute (dead-reckoning, render loop)
+      // intentionally stay alive — they're either cheap or self-recovering.
       document.addEventListener("visibilitychange", function () {
         if (document.hidden) {
           if (state.refreshTimer) { clearTimeout(state.refreshTimer); state.refreshTimer = null; }
           if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
+          if (state.selectedPollTimer) { clearInterval(state.selectedPollTimer); state.selectedPollTimer = null; }
+          if (state.militaryRefreshTimer) { clearInterval(state.militaryRefreshTimer); state.militaryRefreshTimer = null; }
         } else {
           fetchNow();
+          if (state.selectedHex) startSelectedPoll(state.selectedHex);
+          refreshMilitary();
+          state.militaryRefreshTimer = setInterval(refreshMilitary, 2 * 60 * 1000);
         }
       });
 
@@ -3977,7 +3986,7 @@
 
       // Refresh military aircraft registry periodically
       refreshMilitary();
-      setInterval(refreshMilitary, 2 * 60 * 1000);
+      state.militaryRefreshTimer = setInterval(refreshMilitary, 2 * 60 * 1000);
 
       // Init
       buildPresets();
