@@ -1022,16 +1022,17 @@
       // airports / airspace / fixes already baked into the tile.
       var IMAGERY_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
       var LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
-      function chartBundleUrl(layer, z, x, y) {
-        // Route via corsproxy.io (same proxy the ADS-B fetch layer uses
-        // for rate-limited sources). ChartBundle's direct endpoint
-        // appears to reject our requests from GitHub Pages — possibly
-        // hotlink protection, possibly ISP-level filtering of
-        // wms.chartbundle.com. Proxying gives us a cleaner diagnostic
-        // signal: if proxied tiles load, direct was blocked. If neither
-        // works, ChartBundle itself is down.
-        var direct = "https://wms.chartbundle.com/tms/v1.0/" + layer + "/" + z + "/" + x + "/" + y + ".png?type=google";
-        return viaCorsProxy(direct);
+      // FAA's own aeronautical charts hosted on ArcGIS Online. The
+      // AeronauticalInformationServices_FAA org publishes tiled raster
+      // sectionals + IFR enroute charts at LOD 8–12 (per the service
+      // metadata at <base>/<service>/MapServer?f=pjson). Same tile
+      // pattern our satellite IMAGERY_URL uses: {z}/{y}/{x} (ArcGIS
+      // scheme, y before x). No API key, CORS-clean (Esri's standard
+      // for anonymous-read tile services). ChartBundle (prior source)
+      // went offline; PR #30 confirmed direct + corsproxy both fail.
+      var FAA_ARCGIS_BASE = "https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/";
+      function faaArcgisUrl(service, z, x, y) {
+        return FAA_ARCGIS_BASE + service + "/MapServer/tile/" + z + "/" + y + "/" + x;
       }
       var MAP_LAYERS = {
         "satellite": {
@@ -1043,24 +1044,24 @@
         },
         "sectional": {
           label: "VFR Sectional",
-          url: function (z, x, y) { return chartBundleUrl("sec", z, x, y); },
+          url: function (z, x, y) { return faaArcgisUrl("VFR_Sectional", z, x, y); },
           maxZoom: 12,
           hasLabels: false,
-          attribution: "VFR charts © ChartBundle.com · FAA public domain · US only"
+          attribution: "VFR Sectional © FAA · ArcGIS Online · US only"
         },
         "ifr-low": {
           label: "IFR Low",
-          url: function (z, x, y) { return chartBundleUrl("enrl", z, x, y); },
-          maxZoom: 11,
+          url: function (z, x, y) { return faaArcgisUrl("IFR_Enroute_Low", z, x, y); },
+          maxZoom: 12,
           hasLabels: false,
-          attribution: "IFR low enroute © ChartBundle.com · FAA public domain · US only"
+          attribution: "IFR Low Enroute © FAA · ArcGIS Online · US only"
         },
         "ifr-high": {
           label: "IFR High",
-          url: function (z, x, y) { return chartBundleUrl("enrh", z, x, y); },
-          maxZoom: 11,
+          url: function (z, x, y) { return faaArcgisUrl("IFR_Enroute_High", z, x, y); },
+          maxZoom: 12,
           hasLabels: false,
-          attribution: "IFR high enroute © ChartBundle.com · FAA public domain · US only"
+          attribution: "IFR High Enroute © FAA · ArcGIS Online · US only"
         }
       };
       function currentMapLayer() {
