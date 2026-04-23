@@ -1076,12 +1076,13 @@
         if (allFailed || someFailed) {
           el.hidden = false;
           el.className = "tile-status err";
-          // Strip protocol + hostname so the path (z/x/y) is visible at a
-          // glance — "/tms/v1.0/sec/12/658/1584.png" is the diagnostically
-          // useful part, not the hostname (which the layer name already
-          // implies).
-          var url = s.lastError ? " · " + s.lastError.replace(/^https?:\/\/[^/]+/, "") : "";
-          el.textContent = (s.layer.toUpperCase() + " TILES FAILED · 0 OF " + s.requested + " LOADED" + url);
+          // Front-load the diagnostic info so CSS ellipsis (which clips at
+          // the container edge on narrow screens) eats the redundant tail
+          // instead of the useful path. Path first (z/x/y), then fail count.
+          // Banner is already red via .err — "FAILED" suffix is redundant
+          // visual; kept only as a fallback for screenshots that crop color.
+          var path = s.lastError ? s.lastError.replace(/^https?:\/\/[^/]+/, "") : "(no url)";
+          el.textContent = path + " · " + s.errored + "/" + s.requested + " FAILED · " + s.layer.toUpperCase();
         } else if (pending > 0) {
           el.hidden = false;
           el.className = "tile-status";
