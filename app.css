@@ -51,6 +51,12 @@
       -webkit-font-smoothing: antialiased;
       line-height: 1.45;
       min-height: 100vh;
+      /* Block page-level pinch-zoom on iOS Safari. The viewport meta's
+         user-scalable=no is ignored since iOS 10 (intentional accessibility
+         override), but touch-action: pan-x pan-y is honored. The radar SVG
+         declares touch-action: none of its own, which overrides this for
+         the gesture surface so its pinch handler still fires. */
+      touch-action: pan-x pan-y;
     }
     .mono, input[inputmode="decimal"], .pr-call, .pr-dist, .pr-sub,
     .sel-call, .sel-reg, .sel-cell .v, .range-val, #statusText,
