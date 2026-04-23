@@ -11,6 +11,10 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 ### Map & interaction
 - Real-world ESRI satellite tiles with a labels overlay, rendered at
   retina-oversampled zoom for crisp imagery on mobile.
+- **FAA aeronautical chart layers** (US coverage) via ArcGIS Online:
+  VFR Sectional, VFR Terminal, IFR Area Low, and IFR High. Switch from
+  the map-layer picker; an INOP sticker flags layers when they're
+  unavailable at the current location or range.
 - Pan the radar by dragging; pinch on the map with two fingers to change
   range (5 – 500 NM, logarithmic slider below the map mirrors the gesture).
 - Pre-loaded tile buffer (~40 % beyond the active circle) so short pans
@@ -65,7 +69,7 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   OpenSky to respect tighter rate limits. Current rate is shown in the
   status bar.
 - **Contact-list filter & sort.** The list under the radar has filter
-  chips (ALL · AIR · GROUND · MIL · NOTABLE · ⚠) and sort chips
+  chips (ALL · FLYING · GROUND · MIL · NOTABLE · EMERG) and sort chips
   (DIST · ALT · SPD · A–Z, each with an asc/desc toggle). Ships get
   their own filter row (ALL · UNDERWAY · ANCHORED · DISTRESS) when an
   AIS key is set. Choices persist across reloads.
@@ -79,7 +83,6 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   shows SOG / COG / heading / destination / live accumulated trail.
 - Abnormal or distress statuses (not under command, aground, AIS-SART)
   raise a red alert banner.
-- `AIR / SEA / BOTH` segmented toggle filters which layer shows.
 - The settings panel surfaces aisstream errors directly (bad key, malformed
   subscription, unverified account). After 30 seconds of "connected but
   silent", the status downgrades to "NO TRAFFIC IN AREA" so silent failures
@@ -89,33 +92,6 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   and how many ships are currently known. If messages are flowing but no
   markers appear, the bbox is most likely mismatched with the current map
   center — pan to a busy port (Rotterdam, Singapore, Houston) and wait.
-
-## Status (as of PR #11)
-
-- Gesture system (pan, pinch, pinch→pan handoff, tap-to-select,
-  tap-to-deselect) is stable. PR #10 added stale-pointer pruning so the
-  state machine recovers from iOS Safari occasionally eating a
-  `pointerup` during multi-touch.
-- Sticky selection, 30 s deselect grace buffer, loading status row,
-  SIGINT anomaly chips, notable-callsign banners (curated + external
-  operator lookup), MMSI nav-status decode all shipping.
-- Dead-reckoning motion ticker + 10 s fast-mode bulk refresh ship in
-  PR #10 — global contact motion between fetches, not just selected.
-- AIS subscription now re-subscribes on every map-center change. The
-  diagnostic strip in settings reflects the live bbox and per-subscription
-  message counts.
-- Contact-list filter + sort (plane and ship) ships in PR #10. PR #11
-  renames the plane-filter row label to `FILTER` and the airborne chip
-  to `FLYING` to resolve a collision with the top-level `AIR` mode toggle.
-- PR #11: trail render skips any segment implying >800 kt groundspeed,
-  cleaning up OpenSky cross-flight waypoint artifacts that drew as
-  zigzag tendrils across the map.
-- PR #11: dead-reckoning NaN guards stop a single bad fetch from
-  NaN-poisoning the display coordinate and silently culling the selected
-  plane marker.
-- PR #11: off-box selected plane renders as an edge chevron with
-  callsign + bearing/distance so the user never loses their selection
-  when panning away.
 
 ## Known Issues (open)
 
@@ -161,14 +137,6 @@ Ordered roughly by likely ship sequence.
   that stays legible over both ocean and desert, or add a subtle
   drop-shadow SVG filter. Needs side-by-side testing on ocean,
   forest, desert, and urban tiles before committing to one.
-- **VFR/IFR chart overlay** — toggle to replace (or overlay) the ESRI
-  satellite base with an FAA VFR sectional or low-altitude IFR enroute
-  chart. Best first target per research: ChartBundle.com XYZ tiles
-  (CORS-clean, no API key, FAA public domain, US-only). OpenAIP is
-  the global follow-up but needs a user-supplied key. Shape of
-  implementation: tile URL swap + new `state.chartLayer` setting
-  (`none` / `sectional` / `ifr-low` / `ifr-high`) + toggle in the
-  settings panel.
 - **Weather radar overlay** (stretch, optional).
 
 ### Gesture / interaction
@@ -211,16 +179,11 @@ Ordered roughly by likely ship sequence.
       opensky-network.org api.adsbdb.com api.planespotters.net
       corsproxy.io api.allorigins.win stream.aisstream.io`
     - `img-src 'self' data: server.arcgisonline.com
-      wms.chartbundle.com api.planespotters.net api.adsbdb.com`
+      tiles.arcgis.com api.planespotters.net api.adsbdb.com`
     - `style-src 'self' 'unsafe-inline'` (inline styles used for
       swatch colors + dynamic slider fill position)
     - `script-src 'self'`
   Needs end-to-end testing against every fetch origin before landing.
-- **Dead-code sweep** — `state.selectedMissLog` push sites at
-  app.js:~1037/1514/1757/1792 are now inert after COPY DIAGNOSTIC was
-  removed in PR #20. Safe to delete. Also worth auditing `state.showAir` /
-  `state.showSea` readers now that the BOTH|AIR|SEA toggle is gone
-  (PR #25) — both always true in practice.
 
 ## Technical
 
@@ -232,6 +195,7 @@ Ordered roughly by likely ship sequence.
   - `opendata.adsb.fi`, `api.adsb.lol`, `opensky-network.org` — live ADS-B
   - `opensky-network.org/api/tracks` — historical aircraft path
   - `server.arcgisonline.com` — ESRI satellite + labels tile services
+  - `tiles.arcgis.com` — FAA VFR/IFR aeronautical chart tile services
   - `api.adsbdb.com` — flight route (origin/destination) on tap
   - `api.planespotters.net` — aircraft photo on tap
   - `aisstream.io` — maritime AIS (user-supplied key, WebSocket)
@@ -255,8 +219,8 @@ The key is stored only in your browser's `localStorage` (under
 `aisstream.key`) and is only sent directly to aisstream.io's WebSocket. You
 can wipe it at any time with the **CLEAR** button in the same panel.
 
-Once saved, a segmented `BOTH / AIR / SEA` toggle appears above the radar
-to switch between layers. Ships appear in amber with course/heading/speed.
+Once saved, ships appear in amber on the radar with course / heading /
+speed alongside the aircraft layer.
 
 ## Data
 

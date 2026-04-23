@@ -77,16 +77,13 @@ a fresh session sees them immediately.
 ## 5. Current state
 
 ### Main
-`main` is at PR #31 merged — FAA ArcGIS charts live. Four chart
-layers wired (Satellite, VFR Sectional, IFR Low, IFR High) with a
-coverage-gated INOP sticker + user-friendly diagnostic banner.
+`main` is at PR #33 merged. FAA ArcGIS charts live: five map layers
+(Satellite, VFR Sectional, VFR Terminal, IFR Area Low, IFR High) with
+coverage-gated INOP stickers and a user-friendly diagnostic banner.
+VFR Terminal is additionally range- and TAC-proximity-gated.
 
 ### Open PRs
-- **PR #32** (`fix/vfr-terminal-layer`) — adds VFR Terminal as a
-  4th FAA chart layer, plus a range/TAC-proximity availability gate.
-  Three commits: initial swap, `minZoom: 10` fix, availability gate.
-  Waiting on user to test at SFO (drag range slider across 30 NM to
-  confirm INOP flips live) before merging.
+- None.
 
 ### Branches
 - Default branch on GitHub: `claude/habit-tracker-app-bs1bz` (legacy;
@@ -244,8 +241,9 @@ Six PRs in ~24 hours, in order:
 - PR #31: Swap to FAA ArcGIS charts. Three chart services live.
   Coverage-gated INOP + `OUT OF COVERAGE · US ONLY` banner. Clamped
   sticker rotations to ±4° with golden-ratio IFR pair.
-- PR #32 (open): VFR Terminal as 4th chart layer. Range +
+- PR #32: VFR Terminal as 4th chart layer. Range +
   TAC-proximity availability gate. Per-layer availability function.
+- PR #33: Added this HANDOFF.md for session-to-session context transfer.
 
 Commits land on focused feature branches. Never commit to `main`
 directly.
