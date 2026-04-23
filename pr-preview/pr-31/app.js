@@ -1052,7 +1052,7 @@
         },
         "ifr-low": {
           label: "IFR Low",
-          url: function (z, x, y) { return faaArcgisUrl("IFR_Enroute_Low", z, x, y); },
+          url: function (z, x, y) { return faaArcgisUrl("IFR_AreaLow", z, x, y); },
           minZoom: 8,
           maxZoom: 12,
           hasLabels: false,
@@ -1060,7 +1060,7 @@
         },
         "ifr-high": {
           label: "IFR High",
-          url: function (z, x, y) { return faaArcgisUrl("IFR_Enroute_High", z, x, y); },
+          url: function (z, x, y) { return faaArcgisUrl("IFR_High", z, x, y); },
           minZoom: 8,
           maxZoom: 12,
           hasLabels: false,
