@@ -311,7 +311,7 @@
         // Base map tile source. Satellite default; VFR/IFR charts are
         // opt-in via the settings-panel picker. US-only for non-satellite
         // layers (ChartBundle serves FAA public-domain charts).
-        mapLayer: "satellite"     // "satellite" | "sectional" | "ifr-low" | "ifr-high"
+        mapLayer: "satellite"     // "satellite" | "sectional" | "vfr-terminal" | "ifr-low" | "ifr-high"
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
       try {
@@ -327,6 +327,7 @@
         state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
         var storedLayer = localStorage.getItem("map.layer");
         if (storedLayer === "satellite" || storedLayer === "sectional" ||
+            storedLayer === "vfr-terminal" ||
             storedLayer === "ifr-low" || storedLayer === "ifr-high") {
           state.mapLayer = storedLayer;
         }
@@ -1051,17 +1052,100 @@
         return lat >= FAA_COVERAGE.minLat && lat <= FAA_COVERAGE.maxLat
             && lon >= FAA_COVERAGE.minLon && lon <= FAA_COVERAGE.maxLon;
       }
+
+      // FAA only publishes Terminal Area Charts (TACs) for ~35 specific
+      // controlled-airspace metros, not all of the US. The tile service's
+      // fullExtent covers a huge bbox but the cache only has real tiles
+      // within ~30 NM of each listed primary airport; elsewhere it 404s.
+      // Rather than fetching and failing, gate the VFR Terminal button up
+      // front by nearest-TAC distance. List sourced from the FAA TAC
+      // publication roster (2026 cycle); lat/lon are the primary airport
+      // for each charted metro. Adding a new TAC = one row here.
+      var TAC_CITIES = [
+        { code: "ANC", lat: 61.17, lon: -149.99 },
+        { code: "BOS", lat: 42.36, lon: -71.01 },
+        { code: "DCA", lat: 38.85, lon: -77.04 }, // Baltimore-Washington
+        { code: "CLT", lat: 35.21, lon: -80.94 },
+        { code: "ORD", lat: 41.98, lon: -87.90 },
+        { code: "CVG", lat: 39.05, lon: -84.67 },
+        { code: "CLE", lat: 41.41, lon: -81.85 },
+        { code: "COS", lat: 38.80, lon: -104.70 },
+        { code: "CMH", lat: 39.99, lon: -82.89 },
+        { code: "DFW", lat: 32.90, lon: -97.04 },
+        { code: "DEN", lat: 39.86, lon: -104.67 },
+        { code: "DTW", lat: 42.21, lon: -83.35 },
+        { code: "HNL", lat: 21.32, lon: -157.92 },
+        { code: "IAH", lat: 29.98, lon: -95.34 },
+        { code: "JAX", lat: 30.49, lon: -81.69 },
+        { code: "MCI", lat: 39.30, lon: -94.71 },
+        { code: "LAS", lat: 36.08, lon: -115.15 },
+        { code: "LAX", lat: 33.94, lon: -118.41 },
+        { code: "MEM", lat: 35.04, lon: -89.98 },
+        { code: "MIA", lat: 25.80, lon: -80.29 },
+        { code: "MSP", lat: 44.88, lon: -93.22 },
+        { code: "MSY", lat: 29.99, lon: -90.26 },
+        { code: "JFK", lat: 40.64, lon: -73.78 },
+        { code: "MCO", lat: 28.43, lon: -81.31 },
+        { code: "PHL", lat: 39.87, lon: -75.24 },
+        { code: "PHX", lat: 33.43, lon: -112.01 },
+        { code: "PIT", lat: 40.49, lon: -80.23 },
+        { code: "PDX", lat: 45.59, lon: -122.60 },
+        { code: "SJU", lat: 18.44, lon: -66.00 },
+        { code: "SLC", lat: 40.79, lon: -111.98 },
+        { code: "SAN", lat: 32.73, lon: -117.19 },
+        { code: "SFO", lat: 37.62, lon: -122.37 },
+        { code: "SEA", lat: 47.45, lon: -122.31 },
+        { code: "STL", lat: 38.75, lon: -90.37 },
+        { code: "TPA", lat: 27.98, lon: -82.53 }
+      ];
+      // TAC charts cover ~30 NM radius; allow a small margin so someone
+      // panned to the edge of a TAC still gets the chart. If nearest
+      // TAC > this, no TAC tiles will load here.
+      var TAC_PROXIMITY_NM = 40;
+      // Beyond this radar range a TAC is too coarse to read usefully (
+      // each min-LOD tile already spans ~9 NM, so at 30 NM we're rendering
+      // 3 tiles across and losing fine detail). Tell the user to zoom
+      // in rather than serving an unreadable chart.
+      var TAC_MAX_RANGE_NM = 30;
+      function nearestTacDistanceNm(lat, lon) {
+        var min = Infinity;
+        for (var i = 0; i < TAC_CITIES.length; i++) {
+          var d = haversineNm(lat, lon, TAC_CITIES[i].lat, TAC_CITIES[i].lon);
+          if (d < min) min = d;
+        }
+        return min;
+      }
+      // Returns { ok: true } or { ok: false, reason: "USER-FACING TEXT" }
+      // for a given chart layer at the current radar center + range.
+      // renderTiles uses this to short-circuit impossible requests;
+      // updateInopStickers uses the same function so the sticker state
+      // and the tile-status banner never disagree.
+      function chartLayerAvailability(layerId, lat, lon, rangeNm) {
+        if (layerId === "satellite") return { ok: true };
+        if (!isInFaaCoverage(lat, lon)) return { ok: false, reason: "OUT OF COVERAGE · US ONLY" };
+        if (layerId === "vfr-terminal") {
+          if (rangeNm > TAC_MAX_RANGE_NM) {
+            return { ok: false, reason: "ZOOM IN · USE UNDER " + TAC_MAX_RANGE_NM + " NM" };
+          }
+          if (nearestTacDistanceNm(lat, lon) > TAC_PROXIMITY_NM) {
+            return { ok: false, reason: "NO TAC HERE · TRY A MAJOR METRO" };
+          }
+        }
+        return { ok: true };
+      }
       function updateInopStickers() {
-        // Restore the INOP sticker overlay on chart-layer buttons when
-        // the radar center is outside FAA coverage; strip it when
-        // inside. Called from onCenterChanged and once on boot so the
-        // sticker reflects the actual operability at the user's
-        // location, not a static "this feature doesn't work anywhere".
-        var inCoverage = isInFaaCoverage(state.center.lat, state.center.lon);
-        var ids = ["sectional", "ifr-low", "ifr-high"];
+        // INOP sticker reflects per-layer availability at the current
+        // center + range. For Sectional/IFR layers that's just FAA
+        // coverage; for VFR Terminal it additionally accounts for range
+        // (too wide = unreadable) and TAC-city proximity (no chart at
+        // this location). Called from renderTiles so range changes and
+        // pan/preset changes all keep the stickers in sync with reality.
+        var ids = ["sectional", "vfr-terminal", "ifr-low", "ifr-high"];
         for (var i = 0; i < ids.length; i++) {
           var btn = document.querySelector('.map-layer-option[data-map-layer="' + ids[i] + '"]');
-          if (btn) btn.classList.toggle("inop", !inCoverage);
+          if (!btn) continue;
+          var avail = chartLayerAvailability(ids[i], state.center.lat, state.center.lon, state.rangeNm);
+          btn.classList.toggle("inop", !avail.ok);
         }
       }
       var FAA_ARCGIS_BASE = "https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/";
@@ -1084,6 +1168,23 @@
           zoomBoost: 1,
           hasLabels: false,
           attribution: "VFR Sectional © FAA · ArcGIS Online · US only"
+        },
+        "vfr-terminal": {
+          label: "VFR Terminal",
+          url: function (z, x, y) { return faaArcgisUrl("VFR_Terminal", z, x, y); },
+          // Terminal Area Charts are 1:250,000 vs Sectional's 1:500,000
+          // (2× the detail density). Service metadata confirms the LOD
+          // window sits deeper than Sectional: minLOD=10, maxLOD=12
+          // (from VFR_Terminal/MapServer?f=pjson). Below z=10 the
+          // service 404s every tile; the zoom clamp in renderTiles
+          // keeps us inside that window regardless of radar range, so
+          // wide views get the coarsest (z=10) tiles stretched instead
+          // of failing outright.
+          minZoom: 10,
+          maxZoom: 12,
+          zoomBoost: 1,
+          hasLabels: false,
+          attribution: "VFR Terminal Area Chart © FAA · ArcGIS Online · US only"
         },
         "ifr-low": {
           label: "IFR Low",
@@ -1177,13 +1278,15 @@
         // user taps to copy the full diagnostic.
         var layerInfo = MAP_LAYERS[s.layer] || {};
         var friendlyName = (layerInfo.label || s.layer).toUpperCase();
-        if (s.outOfCoverage) {
-          // Distinct banner for the "you're not in the US" case — tells
-          // the user *why* the chart is empty here, instead of the
-          // generic UNAVAILABLE which reads like a server-side failure.
+        if (s.unavailable) {
+          // Specific, layer-aware reason set by chartLayerAvailability
+          // (VFR Terminal at wide range, VFR Terminal far from any TAC,
+          // any chart outside FAA coverage). Distinct from the generic
+          // UNAVAILABLE state, which only fires after N/N tile errors
+          // and reads like a server-side failure.
           el.hidden = false;
           el.className = "tile-status err";
-          el.textContent = friendlyName + " · OUT OF COVERAGE · US ONLY";
+          el.textContent = friendlyName + " · " + (s.unavailableReason || "UNAVAILABLE");
           return;
         }
         if (allFailed || someFailed) {
@@ -1212,21 +1315,30 @@
         // visible diagnostic rather than a silent black radar. Reset each
         // render; placeTile's load/error handlers increment these and
         // updateTileStatus() writes a banner if too many fail.
-        var isChart = state.mapLayer !== "satellite";
+        // Keep the INOP stickers in sync with whatever we're about to
+        // try rendering — so range changes (rangeSlider + pinch) reflect
+        // in the dropdown, not just preset/pan changes. Cheap: 4 DOM
+        // queries + classList toggles per renderTiles call.
+        updateInopStickers();
+        // Per-layer availability check. For satellite this is always ok;
+        // for chart layers this rolls up FAA coverage, range-too-wide,
+        // and TAC-proximity (for vfr-terminal) into one decision. When
+        // not ok, we skip the tile loop entirely and updateTileStatus
+        // renders the specific reason — user sees "NO TAC HERE · TRY A
+        // MAJOR METRO" or "ZOOM IN · USE UNDER 30 NM" instead of a
+        // generic UNAVAILABLE after N/N tile errors.
+        var avail = chartLayerAvailability(state.mapLayer, center.lat, center.lon, state.rangeNm);
         tileLoadState = {
           layer: state.mapLayer,
           requested: 0,
           loaded: 0,
           errored: 0,
           lastError: null,
-          // Pre-computed coverage flag. When true we skip the tile loop
-          // entirely and updateTileStatus shows a specific "OUT OF
-          // COVERAGE" message instead of the generic UNAVAILABLE one
-          // that would arrive after N/N tile errors.
-          outOfCoverage: isChart && !isInFaaCoverage(center.lat, center.lon),
+          unavailable: !avail.ok,
+          unavailableReason: avail.reason || null,
           renderStartedAt: Date.now()
         };
-        if (tileLoadState.outOfCoverage) {
+        if (tileLoadState.unavailable) {
           updateTileStatus();
           return;
         }
