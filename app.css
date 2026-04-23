@@ -51,6 +51,12 @@
       -webkit-font-smoothing: antialiased;
       line-height: 1.45;
       min-height: 100vh;
+      /* Block page-level pinch-zoom on iOS Safari. The viewport meta's
+         user-scalable=no is ignored since iOS 10 (intentional accessibility
+         override), but touch-action: pan-x pan-y is honored. The radar SVG
+         declares touch-action: none of its own, which overrides this for
+         the gesture surface so its pinch handler still fires. */
+      touch-action: pan-x pan-y;
     }
     .mono, input[inputmode="decimal"], .pr-call, .pr-dist, .pr-sub,
     .sel-call, .sel-reg, .sel-cell .v, .range-val, #statusText,
@@ -1277,6 +1283,23 @@
     .alt-range-row { gap: 8px; }
     .alt-range-row .chip-row-label.alt-label-active,
     .alt-range-row.active .chip-row-label { color: var(--accent); }
+    /* Chevron band quick-filter — a chip row of 5 tappable chevron icons
+       plus an ALL text chip. Icons inherit color from the chip so they
+       go accent-colored when active, muted when not. */
+    .alt-band-row { gap: 6px; }
+    .chip.alt-band-chip {
+      min-width: 44px;
+      padding: 4px 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .alt-band-icon {
+      width: 20px;
+      height: 16px;
+      display: block;
+      color: currentColor;
+    }
     .alt-range {
       position: relative;
       flex: 1;
