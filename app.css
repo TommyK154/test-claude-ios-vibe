@@ -537,6 +537,15 @@
       background: rgba(227, 125, 125, 0.16);
       border: 1px solid var(--danger);
       color: #f3b3b3;
+      /* Parent .radar-overlay has pointer-events:none (so the radar behind
+         stays pannable); re-enable here so the red banner is tappable for
+         the copy-to-clipboard diagnostic action. */
+      pointer-events: auto;
+      cursor: pointer;
+      -webkit-tap-highlight-color: rgba(227, 125, 125, 0.35);
+    }
+    .tile-status.err:active {
+      background: rgba(227, 125, 125, 0.28);
     }
 
     .selected-card {
