@@ -1047,6 +1047,7 @@
           url: function (z, x, y) { return faaArcgisUrl("VFR_Sectional", z, x, y); },
           minZoom: 8,
           maxZoom: 12,
+          zoomBoost: 1,
           hasLabels: false,
           attribution: "VFR Sectional © FAA · ArcGIS Online · US only"
         },
@@ -1055,6 +1056,7 @@
           url: function (z, x, y) { return faaArcgisUrl("IFR_AreaLow", z, x, y); },
           minZoom: 8,
           maxZoom: 12,
+          zoomBoost: 1,
           hasLabels: false,
           attribution: "IFR Low Enroute © FAA · ArcGIS Online · US only"
         },
@@ -1063,6 +1065,7 @@
           url: function (z, x, y) { return faaArcgisUrl("IFR_High", z, x, y); },
           minZoom: 8,
           maxZoom: 12,
+          zoomBoost: 1,
           hasLabels: false,
           attribution: "IFR High Enroute © FAA · ArcGIS Online · US only"
         }
@@ -1180,8 +1183,17 @@
         // close zoom. Below minZoom we render the coarsest available
         // tile stretched out (already blocky, not a regression); above
         // maxZoom we render the deepest tile upscaled.
+        //
+        // layer.zoomBoost is an extra over-request on top of the retina
+        // hd adjustment baked into computeTileZoom. Used on chart
+        // layers: FAA publishes full chart detail at each LOD level, so
+        // z=8 tiles have fine lettering/airways compressed into a tile
+        // that covers ~66 NM at mid-latitudes. Rendering those across
+        // a wider radar amplifies MIXED-format JPEG artifacts. Pulling
+        // the next deeper LOD gives each tile sharper underlying pixels;
+        // the maxZoom clamp prevents runaway oversampling at close zoom.
         var rawZ = computeTileZoom(center.lat, state.rangeNm);
-        var z = Math.max(layer.minZoom || 0, Math.min(layer.maxZoom, rawZ));
+        var z = Math.max(layer.minZoom || 0, Math.min(layer.maxZoom, rawZ + (layer.zoomBoost || 0)));
         var n = Math.pow(2, z);
         var latRad = center.lat * Math.PI / 180;
         var centerTileX = (center.lon + 180) / 360 * n;
