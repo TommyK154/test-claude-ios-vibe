@@ -629,29 +629,39 @@
         return isFinite(n) ? n : null;
       }
 
-      function fetchRoute(callsign) {
-        if (!callsign) return;
+      // Route cache is keyed on callsign + hex: the filed-route API returns
+      // the callsign's scheduled route, but regional carriers reuse callsigns
+      // across successive flights on the same day with different aircraft
+      // (e.g. QXE2316 flies SJC→LAX on one hex, then SAN→RDM on another
+      // later the same day). Keying by callsign alone collides them; keying
+      // by callsign|hex keeps them separate.
+      function routeCacheKey(callsign, hex) {
+        return callsign.trim().toUpperCase() + "|" + String(hex).toLowerCase();
+      }
+      function fetchRoute(callsign, hex) {
+        if (!callsign || !hex) return;
         var c = callsign.trim().toUpperCase();
         if (!c || c.length < 3) return;
-        if (state.routes[c]) return;
-        state.routes[c] = { state: "loading" };
+        var key = routeCacheKey(c, hex);
+        if (state.routes[key]) return;
+        state.routes[key] = { state: "loading" };
         var base = "https://api.adsbdb.com/v0/callsign/" + encodeURIComponent(c);
         var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
         tryPhotoUrls(urls, 0).then(function (data) {
           var r = data && data.response && data.response.flightroute;
           if (r && r.origin && r.destination) {
-            state.routes[c] = {
+            state.routes[key] = {
               state: "ok",
               origin: { iata: r.origin.iata_code, icao: r.origin.icao_code, name: r.origin.name, lat: r.origin.latitude, lon: r.origin.longitude },
               destination: { iata: r.destination.iata_code, icao: r.destination.icao_code, name: r.destination.name, lat: r.destination.latitude, lon: r.destination.longitude }
             };
           } else {
-            state.routes[c] = { state: "none" };
+            state.routes[key] = { state: "none" };
           }
           renderSelected();
           renderOverlays();
         }).catch(function () {
-          state.routes[c] = { state: "error" };
+          state.routes[key] = { state: "error" };
         });
       }
 
@@ -726,7 +736,7 @@
           }
         }
 
-        var route = state.routes[(sel.callsign || "").toUpperCase()];
+        var route = (sel.callsign && sel.hex) ? state.routes[routeCacheKey(sel.callsign, sel.hex)] : null;
         if (route && route.state === "ok" && route.origin.lat && route.destination.lat) {
           var cur = project({ lat: sel.lat, lon: sel.lon });
           var org = project({ lat: route.origin.lat, lon: route.origin.lon });
@@ -2228,7 +2238,7 @@
         }
         var statusRowHtml = renderLoadingRow(hexLower, callsign.toUpperCase());
         var photoHtml = renderPhotoBlock(p.hex);
-        var routeHtml = renderRouteBlock(callsign.toUpperCase());
+        var routeHtml = renderRouteBlock(callsign.toUpperCase(), p.hex);
         // Banners: emergency, military, notable (curated + operator), anomalies
         var alertsHtml = "";
         var sq2 = sq.toString();
@@ -2296,9 +2306,9 @@
         var minutes = Math.max(1, Math.round((last.t - first.t) / 60000));
         return { text: t.length + " PTS · " + minutes + " MIN", loading: false };
       }
-      function routeStatusText(callsign) {
-        if (!callsign) return { text: "—", loading: false };
-        var r = state.routes[callsign];
+      function routeStatusText(callsign, hex) {
+        if (!callsign || !hex) return { text: "—", loading: false };
+        var r = state.routes[routeCacheKey(callsign, hex)];
         if (!r) return { text: "—", loading: false };
         if (r.state === "loading") return { text: "LOOKING UP…", loading: true };
         if (r.state === "ok") {
@@ -2496,11 +2506,12 @@
         return html;
       }
 
-      function renderRouteBlock(callsign) {
+      function renderRouteBlock(callsign, hex) {
         // Sad-state (no route, loading, not found) is already communicated by
         // the ROUTE chip in the loading-row strip — don't duplicate it as a
         // full-width block. Only render when we have a resolved origin+dest.
-        var r = state.routes[callsign];
+        if (!callsign || !hex) return "";
+        var r = state.routes[routeCacheKey(callsign, hex)];
         if (!r || r.state !== "ok") return "";
         var oCode = escapeHtml(r.origin.iata || r.origin.icao || "");
         var dCode = escapeHtml(r.destination.iata || r.destination.icao || "");
@@ -2586,7 +2597,7 @@
         }
         state.selectedPlaneData = sp ? Object.assign({}, sp) : null;
         fetchPlanePhoto(state.selectedHex);
-        if (sp && sp.callsign) fetchRoute(sp.callsign);
+        if (sp && sp.callsign && sp.hex) fetchRoute(sp.callsign, sp.hex);
         fetchAircraftOwner(state.selectedHex);
         startSelectedPoll(state.selectedHex);
         renderRadar();
@@ -2865,7 +2876,7 @@
           // Mark pollSelected as authoritative for the next 6 s so bulk-fetch
           // and accumulateTracks don't write a competing position.
           state.lastPollSelectedAt = Date.now();
-          if (base2.callsign && !state.routes[base2.callsign.toUpperCase()]) fetchRoute(base2.callsign);
+          if (base2.callsign) fetchRoute(base2.callsign, hex);
           // Append to track history keyed by hex (works regardless of bbox).
           var tkey = hex.toLowerCase();
           var t = state.tracks[tkey] || (state.tracks[tkey] = []);
