@@ -290,22 +290,25 @@ data; the concentric rings are pure distance references (no clip-path).
   drops the idle session after a timeout. Fix path is on aisstream:
   regenerate the key from their dashboard, wait 24–48 h for activation,
   or open an issue at github.com/aisstream/issues.
-- **Stale route lookups by callsign**: `api.adsbdb.com/v0/callsign/{callsign}`
-  returns a filed route keyed on the callsign string, not the ICAO24 hex
-  of the specific aircraft currently flying it. Regional carriers reuse
-  the same callsign across successive flights in a day (e.g. Horizon
-  Air's `QXE2316` flies SJC→LAX earlier then SAN→RDM later on the same
-  aircraft's dispatch card). `state.routes[callsign]` caches the first
-  lookup, so the card can show a wrong origin/destination pair even
-  though the callsign and hex on-screen are correct for *the current
-  flight*. Confirmed example (2026-04-22): app showed `QXE2316 SJC→LAX`
-  while the live flight (N628QX, hex ae5a1c) was actually SAN→RDM per
-  Apple Wallet + carrier status. Fix direction: (a) include the ICAO24
-  hex in the cache key so different aircraft on the same callsign don't
-  collide, (b) cross-check the route's expected geography against the
-  plane's current position + heading and invalidate the cache entry if
-  the endpoints are impossible, (c) re-fetch on selection instead of
-  using cache on session-long TTL. Deferred to a follow-up PR.
+- **Multi-band altitude quick-filter (multi-select dilemma)**. The
+  chevron BAND chip row (PR #34) is a shortcut into the dual-thumb
+  alt slider's `[altMinFt, altMaxFt]` state. Because that state can
+  only represent a contiguous range, the chips are mutually
+  exclusive: tapping a chip snaps the filter to that single band's
+  edges. User asked whether multi-band selection (e.g. "1 and 2
+  chevrons") is possible. Not cleanly, because the underlying
+  predicate `passesPlaneFilter` at `app.js:1701` is a single
+  min/max window. Directions on the shelf when we revisit:
+  (a) **contiguous-only multi-select** — tapping 1 then 2 widens
+  the range to 10k–30k; tapping 1 then 3 implicitly fills in
+  band 2 (or refuses non-contiguous selections altogether);
+  (b) **swap predicate to a set-of-bands bitset** — drops the
+  slider in favor of independent checkboxes per band, changes
+  `passesPlaneFilter` to `(altFt in selectedBands)`;
+  (c) **hybrid** — chips drive a bitset, slider drives min/max,
+  effective filter is `predicate_set AND predicate_range`.
+  Each option reshapes the existing UX in a different way. Deferred
+  until we have a concrete use case that forces a pick.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,
