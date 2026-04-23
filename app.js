@@ -526,6 +526,8 @@
         // user pans to LA but the key is still subscribed to the initial
         // center, and no ships appear.
         resubscribeAis();
+        // INOP sticker state tracks the new center's FAA coverage.
+        updateInopStickers();
       }
 
       function setStatus(msg) {
@@ -1030,6 +1032,38 @@
       // scheme, y before x). No API key, CORS-clean (Esri's standard
       // for anonymous-read tile services). ChartBundle (prior source)
       // went offline; PR #30 confirmed direct + corsproxy both fail.
+      // Rough FAA chart coverage bbox — CONUS + Alaska + Hawaii + US
+      // territories. FAA's ArcGIS services only publish tiles inside
+      // this region; requests outside return nothing useful. We check
+      // state.center on every map re-center and use this to (a) show
+      // an "OUT OF COVERAGE · US ONLY" banner instead of firing tile
+      // requests that will all fail, (b) restore the INOP sticker on
+      // the chart buttons so users know the layer won't work at their
+      // current location. The box is intentionally generous at the
+      // edges (includes ocean around Hawaii and bits of Mexico /
+      // Canada airspace near the border) — tiles themselves return
+      // nothing over non-US territory, so "in coverage" is a
+      // necessary-not-sufficient signal; the real test is whether
+      // tiles load. When they don't despite coverage=true, the
+      // existing UNAVAILABLE banner kicks in.
+      var FAA_COVERAGE = { minLat: 17, maxLat: 72, minLon: -180, maxLon: -65 };
+      function isInFaaCoverage(lat, lon) {
+        return lat >= FAA_COVERAGE.minLat && lat <= FAA_COVERAGE.maxLat
+            && lon >= FAA_COVERAGE.minLon && lon <= FAA_COVERAGE.maxLon;
+      }
+      function updateInopStickers() {
+        // Restore the INOP sticker overlay on chart-layer buttons when
+        // the radar center is outside FAA coverage; strip it when
+        // inside. Called from onCenterChanged and once on boot so the
+        // sticker reflects the actual operability at the user's
+        // location, not a static "this feature doesn't work anywhere".
+        var inCoverage = isInFaaCoverage(state.center.lat, state.center.lon);
+        var ids = ["sectional", "ifr-low", "ifr-high"];
+        for (var i = 0; i < ids.length; i++) {
+          var btn = document.querySelector('.map-layer-option[data-map-layer="' + ids[i] + '"]');
+          if (btn) btn.classList.toggle("inop", !inCoverage);
+        }
+      }
       var FAA_ARCGIS_BASE = "https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/";
       function faaArcgisUrl(service, z, x, y) {
         return FAA_ARCGIS_BASE + service + "/MapServer/tile/" + z + "/" + y + "/" + x;
@@ -1143,6 +1177,15 @@
         // user taps to copy the full diagnostic.
         var layerInfo = MAP_LAYERS[s.layer] || {};
         var friendlyName = (layerInfo.label || s.layer).toUpperCase();
+        if (s.outOfCoverage) {
+          // Distinct banner for the "you're not in the US" case — tells
+          // the user *why* the chart is empty here, instead of the
+          // generic UNAVAILABLE which reads like a server-side failure.
+          el.hidden = false;
+          el.className = "tile-status err";
+          el.textContent = friendlyName + " · OUT OF COVERAGE · US ONLY";
+          return;
+        }
         if (allFailed || someFailed) {
           el.hidden = false;
           el.className = "tile-status err";
@@ -1169,14 +1212,24 @@
         // visible diagnostic rather than a silent black radar. Reset each
         // render; placeTile's load/error handlers increment these and
         // updateTileStatus() writes a banner if too many fail.
+        var isChart = state.mapLayer !== "satellite";
         tileLoadState = {
           layer: state.mapLayer,
           requested: 0,
           loaded: 0,
           errored: 0,
           lastError: null,
+          // Pre-computed coverage flag. When true we skip the tile loop
+          // entirely and updateTileStatus shows a specific "OUT OF
+          // COVERAGE" message instead of the generic UNAVAILABLE one
+          // that would arrive after N/N tile errors.
+          outOfCoverage: isChart && !isInFaaCoverage(center.lat, center.lon),
           renderStartedAt: Date.now()
         };
+        if (tileLoadState.outOfCoverage) {
+          updateTileStatus();
+          return;
+        }
         // Chart layers have a publisher-defined LOD range (FAA's ArcGIS
         // tiles exist at z=8..12 only). Clamp both ends so we don't
         // request tiles the service will 404 on at very wide or very
@@ -3746,6 +3799,7 @@
       setupMapLayerPicker();
       setupTileStatusCopy();
       updateAttributionFooter();
+      updateInopStickers();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");
