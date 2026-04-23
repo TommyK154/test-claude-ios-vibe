@@ -309,6 +309,42 @@ data; the concentric rings are pure distance references (no clip-path).
   effective filter is `predicate_set AND predicate_range`.
   Each option reshapes the existing UX in a different way. Deferred
   until we have a concrete use case that forces a pick.
+- **Route lookups misrepresenting today's flight**: two failure
+  modes, partly fixed.
+  1. *Cross-aircraft callsign reuse* — regional carriers reuse a
+     callsign across successive flights on the same day with
+     different aircraft. Example (2026-04-22): `QXE2316 SJC→LAX`
+     earlier, `QXE2316 SAN→RDM` on a different hex later. **Fixed
+     in PR #35** via a compound cache key `callsign|hex` at
+     `routeCacheKey()` in `app.js`; each `callsign+hex` pair gets
+     its own cache entry, so the morning flight's route can't leak
+     onto the afternoon flight's aircraft.
+  2. *Broadcast callsign doesn't match today's flight* — the
+     ADS-B callsign the pilot sets in the transponder can be stale
+     from a prior leg (or `api.adsbdb.com/v0/callsign/{callsign}`
+     can return a filed "typical" route that doesn't match today's
+     actual routing). The cache key is internally consistent, but
+     the *source* is unreliable. Confirmed 2026-04-23: N17327
+     (hex `A12710`) broadcasting `UAL2192` at SFO on approach /
+     departure (350 ft, heading 299°, 1 NM from center). adsbdb
+     returned `UAL2192 → PHL→ORD`. Apple flight status showed the
+     actual flight was `UA822 MEX→SFO`. **Not fixed.** Candidate
+     directions:
+     - (a) **Geography cross-check at render time**: if both
+       origin.lat/lon and destination.lat/lon of the cached route
+       are > ~1000 NM from the plane's current position, suppress
+       the route line + card block and optionally show an
+       uncertainty chip. Cheap (two distance calcs per render).
+       Would have caught the SFO example — both PHL and ORD are
+       thousands of NM from SFO.
+     - (b) **Re-fetch on selection** rather than session-long TTL,
+       to catch typical-route-vs-today-route drift. Doesn't help
+       the stale-transponder case; does help if adsbdb updates
+       intraday.
+     - (c) **Cross-reference with a live-flight-status API** (e.g.
+       whatever Apple's using). Out of scope for this project —
+       would require a new API dependency.
+     (a) is the strongest next step.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,
