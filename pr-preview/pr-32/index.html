@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#faf8f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Flight Radar · Live ADS-B + AIS</title>
+  <meta name="description" content="Dependency-free browser radar for live aircraft (ADS-B) and optional ship (AIS) traffic, rendered over satellite imagery. Mobile-first, no build step.">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="previewBanner" class="preview-banner" hidden></div>
+  <div class="app">
+    <div class="tactical-strip">
+      <span class="brand"><span class="dot" aria-hidden="true"></span>FLIGHT RADAR</span>
+      <span class="readout" id="tacReadout">— · 0 NM · 0</span>
+      <button type="button" id="settingsBtn" class="tac-icon" aria-label="Settings">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+          <line x1="2" y1="4" x2="10" y2="4"/>
+          <line x1="13.5" y1="4" x2="14" y2="4"/>
+          <circle cx="12" cy="4" r="1.6" fill="currentColor" stroke="none"/>
+          <line x1="2" y1="8" x2="4" y2="8"/>
+          <line x1="7.5" y1="8" x2="14" y2="8"/>
+          <circle cx="6" cy="8" r="1.6" fill="currentColor" stroke="none"/>
+          <line x1="2" y1="12" x2="9" y2="12"/>
+          <line x1="12.5" y1="12" x2="14" y2="12"/>
+          <circle cx="11" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+    </div>
+    <div id="settingsPanel" class="settings-panel" hidden>
+      <h3>Settings</h3>
+      <div class="setting-block">
+        <label for="aisKeyInput">aisstream.io API key <span class="muted">(required for ship tracking)</span></label>
+        <p class="setting-help">Ship tracking uses <a href="https://aisstream.io/apikeys" target="_blank" rel="noopener">aisstream.io</a>. Sign up (free, ~30 seconds), copy your key, and paste it here. The key is stored only in your browser (localStorage) and is only used to connect to aisstream directly.</p>
+        <div class="setting-row">
+          <input type="text" id="aisKeyInput" autocomplete="off" spellcheck="false" placeholder="Paste your aisstream.io key">
+          <button type="button" id="aisKeySave" class="btn-primary">SAVE</button>
+          <button type="button" id="aisKeyClear" class="btn-danger" hidden>CLEAR</button>
+        </div>
+        <div id="aisStatus" class="ais-status"></div>
+        <div id="aisDiag" class="ais-diag" hidden></div>
+        <p class="setting-help ais-diag-hint">If you see messages flowing but no ship markers, the subscribed bounding box may not match your map center — pan to a busy port (e.g. Rotterdam, Singapore, Houston) and wait ~30 s. aisstream's free tier only streams the bbox you subscribed to.</p>
+      </div>
+    </div>
+    <div class="controls" id="controlsPanel">
+      <button type="button" class="controls-header" id="controlsToggle" aria-expanded="true">
+        <h2>Location</h2>
+        <span class="chevron" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+        </span>
+      </button>
+      <div class="controls-body" id="controlsBody">
+      <div class="airport-search">
+        <div class="airport-input-row">
+          <div class="airport-input-wrap">
+            <input type="search" id="airportInput" placeholder="ICAO, IATA or city (e.g. SFO, KSFO, San Francisco)" autocomplete="off" spellcheck="false" autocapitalize="characters">
+            <button type="button" id="airportClear" class="apt-clear" hidden aria-label="Clear">×</button>
+          </div>
+          <button type="button" id="airportGo" class="apt-go">GO</button>
+        </div>
+        <div class="airport-dropdown" id="airportDropdown" hidden></div>
+      </div>
+      <div class="preset-row" id="presetRow"></div>
+      <div class="coord-row">
+        <div class="coord">
+          <label for="latInput">Latitude</label>
+          <input id="latInput" type="number" step="0.0001" min="-90" max="90" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="coord">
+          <label for="lonInput">Longitude</label>
+          <input id="lonInput" type="number" step="0.0001" min="-180" max="180" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+      <div class="range-row">
+        <label for="rangeSlider">Range <span class="muted">(pinch on the radar to zoom)</span></label>
+        <div class="range-slider-wrap">
+          <input id="rangeSlider" type="range" min="0" max="100" step="1" value="50" aria-label="Radar range">
+          <span class="range-val" id="rangeVal">50 NM</span>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div class="radar-card">
+      <div class="radar-overlay">
+        <span id="radarLoc">—</span>
+        <span class="rcount"><span id="radarCount">0</span> aircraft</span>
+      </div>
+      <div class="radar-overlay tile-status-row"><span id="tileStatus" class="tile-status" hidden></span></div>
+      <svg class="radar-svg" id="radar" viewBox="-110 -110 220 220" aria-label="Aircraft radar">
+        <defs>
+          <clipPath id="radarClip"><circle cx="0" cy="0" r="100"/></clipPath>
+        </defs>
+        <defs>
+          <radialGradient id="vignetteGrad" cx="0" cy="0" r="155" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#070c15" stop-opacity="0"/>
+            <stop offset="0.645" stop-color="#070c15" stop-opacity="0"/>
+            <stop offset="0.72" stop-color="#070c15" stop-opacity="0.45"/>
+            <stop offset="1" stop-color="#070c15" stop-opacity="0.95"/>
+          </radialGradient>
+        </defs>
+        <g id="tileLayer"></g>
+        <g id="labelLayer"></g>
+        <rect x="-110" y="-110" width="220" height="220" fill="url(#vignetteGrad)" style="pointer-events:none"/>
+        <circle cx="0" cy="0" r="100" fill="none" stroke="var(--accent-dim)" stroke-width="0.8" style="pointer-events:none"/>
+        <g id="radarGrid">
+          <circle cx="0" cy="0" r="100" fill="none" stroke="var(--radar-ring)" stroke-width="0.8"/>
+          <circle cx="0" cy="0" r="75" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <circle cx="0" cy="0" r="50" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <circle cx="0" cy="0" r="25" fill="none" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <line x1="-100" y1="0" x2="100" y2="0" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <line x1="0" y1="-100" x2="0" y2="100" stroke="var(--radar-grid)" stroke-width="0.5"/>
+          <circle cx="0" cy="0" r="1.5" fill="var(--plane)"/>
+          <text x="0" y="-104" text-anchor="middle" fill="var(--radar-label)" font-size="7" style="paint-order:stroke;stroke:rgba(7,12,21,0.85);stroke-width:1.2;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">N</text>
+          <text x="104" y="2.5" text-anchor="start" fill="var(--radar-label)" font-size="7" style="paint-order:stroke;stroke:rgba(7,12,21,0.85);stroke-width:1.2;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">E</text>
+          <text x="0" y="109" text-anchor="middle" fill="var(--radar-label)" font-size="7" style="paint-order:stroke;stroke:rgba(7,12,21,0.85);stroke-width:1.2;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">S</text>
+          <text x="-104" y="2.5" text-anchor="end" fill="var(--radar-label)" font-size="7" style="paint-order:stroke;stroke:rgba(7,12,21,0.85);stroke-width:1.2;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="700">W</text>
+          <text id="r1lbl" x="27" y="-1" fill="var(--radar-label)" font-size="5.5" style="paint-order:stroke;stroke:rgba(7,12,21,0.75);stroke-width:1;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif"></text>
+          <text id="r2lbl" x="52" y="-1" fill="var(--radar-label)" font-size="5.5" style="paint-order:stroke;stroke:rgba(7,12,21,0.75);stroke-width:1;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif"></text>
+          <text id="r3lbl" x="77" y="-1" fill="var(--radar-label)" font-size="5.5" style="paint-order:stroke;stroke:rgba(7,12,21,0.75);stroke-width:1;stroke-linejoin:round" font-family="-apple-system, BlinkMacSystemFont, sans-serif"></text>
+        </g>
+        <g id="trackLayer"></g>
+        <g id="routeLayer"></g>
+        <g id="vectorLayer"></g>
+        <g id="planeLayer"></g>
+        <g id="shipLayer"></g>
+      </svg>
+    </div>
+
+    <div class="map-controls-row">
+      <div class="map-layer-control" id="mapLayerControl">
+        <button type="button" class="map-layer-pill" id="mapLayerPill" aria-expanded="false" aria-haspopup="listbox" aria-label="Map layer">
+          <span class="mlp-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"><path d="M2 4.6l6-2.6 6 2.6-6 2.6z"/><path d="M2 8l6 2.6 6-2.6"/><path d="M2 11.4l6 2.6 6-2.6"/></svg>
+          </span>
+          <span class="mlp-label" id="mapLayerLabel">Satellite</span>
+          <span class="mlp-caret" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+          </span>
+        </button>
+        <div class="map-layer-dropdown" id="mapLayerDropdown" hidden role="listbox">
+          <button type="button" class="map-layer-option" data-map-layer="satellite" role="option">Satellite</button>
+          <button type="button" class="map-layer-option" data-map-layer="sectional" role="option">VFR Sectional</button>
+          <button type="button" class="map-layer-option" data-map-layer="vfr-terminal" role="option">VFR Terminal</button>
+          <button type="button" class="map-layer-option" data-map-layer="ifr-low" role="option">IFR Low</button>
+          <button type="button" class="map-layer-option" data-map-layer="ifr-high" role="option">IFR High</button>
+        </div>
+      </div>
+
+      <div class="lead-pill" id="leadPill" data-state="collapsed">
+        <button type="button" class="lp-collapsed" id="leadPillTrigger" aria-expanded="false" aria-label="Lead projection length">
+          <span class="lp-kw">LEAD</span>
+          <span class="lp-val" id="leadPillValue">1</span>
+          <span class="lp-unit">MIN</span>
+        </button>
+        <div class="lp-expanded" id="leadPicker" role="group" aria-label="Lead projection length">
+          <span class="lp-kw">LEAD</span>
+          <button type="button" class="lp-opt sel-trend-btn" data-trend-min="1" aria-label="Lead 1 min">1</button>
+          <button type="button" class="lp-opt sel-trend-btn" data-trend-min="2" aria-label="Lead 2 min">2</button>
+          <button type="button" class="lp-opt sel-trend-btn" data-trend-min="5" aria-label="Lead 5 min">5</button>
+          <span class="lp-unit">MIN</span>
+        </div>
+      </div>
+
+      <button type="button" class="legend-icon" id="legendToggle" aria-expanded="false" aria-label="Toggle legend">?</button>
+    </div>
+
+    <div class="legend" id="legend">
+      <div class="legend-body">
+        <div class="lg-row"><span class="lg-swatch" style="background:#5ce0ca"></span><span class="lg-k">Trail</span><span class="lg-v">Actual flown path (up to ~1 hr of live + historical)</span></div>
+        <div class="lg-row"><span class="lg-swatch" style="background:#6eff9a"></span><span class="lg-k">Lead</span><span class="lg-v">Projected position in 1 / 2 / 5 min at current speed &amp; heading · tap the LEAD pill below the radar to change</span></div>
+        <div class="lg-row"><span class="lg-swatch dashed" style="color:#ff4ddb"></span><span class="lg-k">Route</span><span class="lg-v">Filed flight plan: origin → current → destination</span></div>
+        <div class="lg-row lg-alt-row">
+          <span class="lg-k">Altitude</span>
+          <div class="lg-alt-samples">
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+              </svg>
+              <span>&lt; 10k ft</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>10–20k ft</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>20–30k ft</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>30–40k ft</span>
+            </div>
+            <div class="lg-alt-sample">
+              <svg width="28" height="40" viewBox="-6 -6 12 24" aria-hidden="true">
+                <polygon points="0,-4.2 3,4.2 0,2.6 -3,4.2" fill="#5ce0ca" stroke="rgba(7,12,21,0.95)" stroke-width="0.5" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,5.1 0,4.2 1.8,5.1" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,6.5 0,5.6 1.8,6.5" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,7.9 0,7.0 1.8,7.9" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,9.3 0,8.4 1.8,9.3" fill="none" stroke="rgba(7,12,21,0.95)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="-1.8,9.3 0,8.4 1.8,9.3" fill="none" stroke="#5ce0ca" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>40k+ ft</span>
+            </div>
+          </div>
+        </div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#f0c674"></span><span class="lg-k">Selected</span><span class="lg-v">Gold fill + gold halo marks the selected contact</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff5a5a"></span><span class="lg-k">Emergency</span><span class="lg-v">Red fill + pulsing red halo: squawk 7500 / 7600 / 7700</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ff9e4a"></span><span class="lg-k">Military</span><span class="lg-v">Orange fill: flagged military / notable callsign</span></div>
+        <div class="lg-row"><span class="lg-swatch dot" style="background:#ffb347"></span><span class="lg-k">Ship</span><span class="lg-v">Amber hull: AIS vessel</span></div>
+      </div>
+    </div>
+
+    <div class="selected-card" id="selectedCard">
+      <div class="sel-empty">Tap a plane to see details</div>
+    </div>
+
+    <div class="status-row">
+      <div class="left">
+        <span class="dot-live" id="liveDot"></span>
+        <span id="statusText">Loading…</span>
+      </div>
+      <button class="refresh-btn" id="refreshBtn" type="button">Refresh</button>
+    </div>
+
+    <div id="listControls" class="list-controls"></div>
+    <div id="listContainer"></div>
+
+    <footer class="page-footer">Imagery © Esri, Maxar, Earthstar Geographics · Flight data: adsb.fi / adsb.lol / OpenSky · Photos: planespotters.net · Routes: adsbdb.com · AIS: aisstream.io</footer>
+  </div>
+
+  <script async src="airports.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
