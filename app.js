@@ -1073,6 +1073,56 @@
       // when tiles load normally; only noisy when the user has a real
       // problem worth seeing.
       var tileLoadState = { layer: "satellite", requested: 0, loaded: 0, errored: 0, lastError: null, renderStartedAt: 0 };
+      // Build a compact key=value diagnostic string that captures the exact
+      // tile-load failure state: which layer, how many failed, the source
+      // URL (including any CORS-proxy wrapper), the unwrapped inner URL,
+      // the current radar center/range, timestamp, and a short UA hint.
+      // Tapping the red tile-status banner copies this to the clipboard so
+      // a user debugging on a phone can paste the diagnostic into chat
+      // instead of screenshotting the banner (which CSS ellipsis clips).
+      function buildTileDiag() {
+        var s = tileLoadState || {};
+        var raw = s.lastError || "";
+        var innerMatch = raw.match(/[?&]url=([^&]+)/);
+        var inner = innerMatch ? decodeURIComponent(innerMatch[1]) : raw;
+        var c = state.center || {};
+        var parts = [
+          "layer=" + s.layer,
+          "err=" + s.errored + "/" + s.requested,
+          "src=" + raw,
+          inner !== raw ? "inner=" + inner : null,
+          "center=" + (c.lat != null ? c.lat.toFixed(4) : "?") + "," + (c.lon != null ? c.lon.toFixed(4) : "?"),
+          "range=" + state.rangeNm + "NM",
+          "t=" + new Date().toISOString(),
+          "ua=" + (navigator.userAgent || "").replace(/\s+/g, " ").slice(0, 80)
+        ];
+        return parts.filter(Boolean).join(" ");
+      }
+
+      function setupTileStatusCopy() {
+        var el = document.getElementById("tileStatus");
+        if (!el) return;
+        el.addEventListener("click", function () {
+          if (!el.classList.contains("err")) return;
+          var diag = buildTileDiag();
+          function flash(msg) {
+            el.textContent = msg;
+            setTimeout(function () {
+              if (el.classList.contains("err")) updateTileStatus();
+            }, 1800);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(diag).then(
+              function () { flash("COPIED · PASTE IN CHAT"); },
+              function () { console.log("[tile-diag]", diag); flash("COPY FAILED · SEE CONSOLE"); }
+            );
+          } else {
+            console.log("[tile-diag]", diag);
+            flash("NO CLIPBOARD API · SEE CONSOLE");
+          }
+        });
+      }
+
       function updateTileStatus() {
         var el = document.getElementById("tileStatus");
         if (!el) return;
@@ -3678,6 +3728,7 @@
       setupSettings();
       setupLeadPicker();
       setupMapLayerPicker();
+      setupTileStatusCopy();
       updateAttributionFooter();
       // Collapsible controls panel
       (function () {
