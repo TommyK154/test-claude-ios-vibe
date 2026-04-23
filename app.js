@@ -1090,12 +1090,14 @@
           label: "VFR Terminal",
           url: function (z, x, y) { return faaArcgisUrl("VFR_Terminal", z, x, y); },
           // Terminal Area Charts are 1:250,000 vs Sectional's 1:500,000
-          // (2× the detail density), so their useful zoom window sits a
-          // bit deeper. Defaults mirror Sectional (8–12) as a starting
-          // point; if the diagnostic banner shows failures at the edges
-          // we tighten minZoom up or maxZoom down per the service's
-          // advertised LOD range from ?f=pjson.
-          minZoom: 8,
+          // (2× the detail density). Service metadata confirms the LOD
+          // window sits deeper than Sectional: minLOD=10, maxLOD=12
+          // (from VFR_Terminal/MapServer?f=pjson). Below z=10 the
+          // service 404s every tile; the zoom clamp in renderTiles
+          // keeps us inside that window regardless of radar range, so
+          // wide views get the coarsest (z=10) tiles stretched instead
+          // of failing outright.
+          minZoom: 10,
           maxZoom: 12,
           zoomBoost: 1,
           hasLabels: false,
