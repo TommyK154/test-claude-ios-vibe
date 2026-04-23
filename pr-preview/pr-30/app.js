@@ -1113,12 +1113,12 @@
           }
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(diag).then(
-              function () { flash("COPIED · PASTE IN CHAT"); },
-              function () { console.log("[tile-diag]", diag); flash("COPY FAILED · SEE CONSOLE"); }
+              function () { flash("DIAGNOSTIC COPIED"); },
+              function () { console.log("[tile-diag]", diag); flash("COULDN'T COPY"); }
             );
           } else {
             console.log("[tile-diag]", diag);
-            flash("NO CLIPBOARD API · SEE CONSOLE");
+            flash("CLIPBOARD UNAVAILABLE");
           }
         });
       }
@@ -1131,24 +1131,19 @@
         var allFailed = s.requested > 0 && s.errored === s.requested;
         var someFailed = s.requested > 0 && s.errored > 0 && s.loaded === 0;
         if (s.layer === "satellite") { el.hidden = true; el.textContent = ""; return; }
+        // Friendly label for the user-visible banner. Technical URL/path/
+        // count lives in buildTileDiag() instead — surfaced only when the
+        // user taps to copy the full diagnostic.
+        var layerInfo = MAP_LAYERS[s.layer] || {};
+        var friendlyName = (layerInfo.label || s.layer).toUpperCase();
         if (allFailed || someFailed) {
           el.hidden = false;
           el.className = "tile-status err";
-          // Unwrap a corsproxy.io / allorigins wrapper so the inner tile
-          // path is readable. Without this, a proxied URL shows as an
-          // unreadable URL-encoded blob. Then strip protocol + hostname
-          // so only the /path?query remains — the diagnostic signal.
-          // Layer name is redundant (user already sees it in the pill),
-          // so dropped from the banner to save horizontal space.
-          var raw = s.lastError || "";
-          var inner = (raw.match(/[?&]url=([^&]+)/) || [])[1];
-          var target = inner ? decodeURIComponent(inner) : raw;
-          var path = target ? target.replace(/^https?:\/\/[^/]+/, "") : "(no url)";
-          el.textContent = path + " · " + s.errored + "/" + s.requested + " FAILED";
+          el.textContent = friendlyName + " UNAVAILABLE · TAP FOR DETAILS";
         } else if (pending > 0) {
           el.hidden = false;
           el.className = "tile-status";
-          el.textContent = s.layer.toUpperCase() + " · LOADING " + s.loaded + "/" + s.requested + "…";
+          el.textContent = friendlyName + " · LOADING…";
         } else {
           el.hidden = true;
           el.textContent = "";
