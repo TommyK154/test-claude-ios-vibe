@@ -1831,6 +1831,9 @@
             var active = state.listFilter === f.k ? " active" : "";
             return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
           }).join("") + '</div>');
+        // Chevron-band quick filter (ALL + 0-4 chevrons). Taps tween the
+        // dual-thumb alt slider below to the band's edges.
+        parts.push(renderAltBandRow());
         // Altitude range: dual-thumb slider + readout. Two overlaid range
         // inputs, a shared track behind, and a "fill" bar showing the
         // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
@@ -1862,6 +1865,7 @@
               var k = btn.dataset.k;
               if (kind === "plane-filter") setListOption("filter", k);
               else if (kind === "plane-sort") setListOption("sort", k);
+              else if (kind === "plane-alt-band") selectAltBand(k);
               else if (kind === "ship-filter") setListOption("shipFilter", k);
               else if (kind === "ship-sort") setListOption("shipSort", k);
             });
@@ -1901,6 +1905,118 @@
           '<span class="alt-range-readout" id="altRangeReadout">' + formatAltRangeText() + '</span>' +
         '</div>';
       }
+
+      // Altitude quick-filter: six chips keyed to the chevron-count bands
+      // defined by altitudeChevronCount(). Tapping a chip tweens the
+      // dual-thumb alt slider to the band edges; the underlying filter
+      // state (altMinFt / altMaxFt) is the same storage path as the
+      // slider, so the chip is a shortcut, not a parallel filter.
+      var ALT_BANDS = {
+        "all": [0, 50000],
+        "0":   [0, 10000],
+        "1":   [10000, 20000],
+        "2":   [20000, 30000],
+        "3":   [30000, 40000],
+        "4":   [40000, 50000]
+      };
+      function altBandMatchKey(minFt, maxFt) {
+        var keys = ["all", "0", "1", "2", "3", "4"];
+        for (var i = 0; i < keys.length; i++) {
+          var b = ALT_BANDS[keys[i]];
+          if (b[0] === minFt && b[1] === maxFt) return keys[i];
+        }
+        return null;
+      }
+      function altBandIconSvg(n) {
+        if (n === 0) {
+          return '<svg viewBox="0 0 20 16" class="alt-band-icon" aria-hidden="true">' +
+            '<line x1="5" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
+          '</svg>';
+        }
+        var svg = '<svg viewBox="0 0 20 16" class="alt-band-icon" aria-hidden="true">';
+        var bottomApex = 13;
+        for (var i = 0; i < n; i++) {
+          var apexY = bottomApex - i * 3;
+          svg += '<polyline points="6,' + (apexY + 2) + ' 10,' + apexY + ' 14,' + (apexY + 2) + '" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
+        }
+        svg += '</svg>';
+        return svg;
+      }
+      function renderAltBandRow() {
+        var active = altBandMatchKey(state.altMinFt, state.altMaxFt);
+        var chips = [
+          { k: "all", label: "ALL", icon: "", aria: "All altitudes" },
+          { k: "0",   label: "",    icon: altBandIconSvg(0), aria: "Below 10,000 ft" },
+          { k: "1",   label: "",    icon: altBandIconSvg(1), aria: "10,000 to 20,000 ft" },
+          { k: "2",   label: "",    icon: altBandIconSvg(2), aria: "20,000 to 30,000 ft" },
+          { k: "3",   label: "",    icon: altBandIconSvg(3), aria: "30,000 to 40,000 ft" },
+          { k: "4",   label: "",    icon: altBandIconSvg(4), aria: "Above 40,000 ft" }
+        ];
+        return '<div class="chip-row alt-band-row" data-kind="plane-alt-band">' +
+          '<span class="chip-row-label">BAND</span>' +
+          chips.map(function (c) {
+            var on = active === c.k ? " active" : "";
+            return '<button class="chip alt-band-chip' + on + '" data-k="' + c.k + '" aria-label="' + c.aria + '">' +
+              c.icon + (c.label ? '<span class="alt-band-txt">' + c.label + '</span>' : '') +
+            '</button>';
+          }).join("") +
+        '</div>';
+      }
+      var altBandTweenRaf = 0;
+      function tweenAltBand(targetMin, targetMax) {
+        if (altBandTweenRaf) cancelAnimationFrame(altBandTweenRaf);
+        var startMin = state.altMinFt;
+        var startMax = state.altMaxFt;
+        var t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        var DUR = 180;
+        var altMinInput = document.getElementById("altMinInput");
+        var altMaxInput = document.getElementById("altMaxInput");
+        function step(now) {
+          var elapsed = now - t0;
+          var t = Math.min(1, elapsed / DUR);
+          var lo = Math.round((startMin + (targetMin - startMin) * t) / 500) * 500;
+          var hi = Math.round((startMax + (targetMax - startMax) * t) / 500) * 500;
+          state.altMinFt = lo;
+          state.altMaxFt = hi;
+          if (altMinInput) altMinInput.value = lo;
+          if (altMaxInput) altMaxInput.value = hi;
+          updateAltRangeUi();
+          if (t < 1) {
+            altBandTweenRaf = requestAnimationFrame(step);
+            return;
+          }
+          altBandTweenRaf = 0;
+          state.altMinFt = targetMin;
+          state.altMaxFt = targetMax;
+          if (altMinInput) altMinInput.value = targetMin;
+          if (altMaxInput) altMaxInput.value = targetMax;
+          updateAltRangeUi();
+          try {
+            localStorage.setItem("list.altMin", String(targetMin));
+            localStorage.setItem("list.altMax", String(targetMax));
+          } catch (err) {}
+          updateAltBandChips();
+          renderRadar();
+          renderListEntries();
+        }
+        altBandTweenRaf = requestAnimationFrame(function (now) {
+          step(now != null ? now : (performance.now ? performance.now() : Date.now()));
+        });
+      }
+      function updateAltBandChips() {
+        var activeKey = altBandMatchKey(state.altMinFt, state.altMaxFt);
+        var row = document.querySelector('[data-kind="plane-alt-band"]');
+        if (!row) return;
+        var chips = row.querySelectorAll(".chip[data-k]");
+        for (var i = 0; i < chips.length; i++) {
+          chips[i].classList.toggle("active", chips[i].dataset.k === activeKey);
+        }
+      }
+      function selectAltBand(band) {
+        var target = ALT_BANDS[band];
+        if (!target) return;
+        tweenAltBand(target[0], target[1]);
+      }
       function updateAltRangeUi() {
         var fill = document.getElementById("altRangeFill");
         var readout = document.getElementById("altRangeReadout");
@@ -1916,6 +2032,7 @@
           var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
           row.classList.toggle("active", active);
         }
+        updateAltBandChips();
       }
       function wireAltRangeSlider() {
         var altMin = document.getElementById("altMinInput");
