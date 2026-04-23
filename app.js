@@ -268,7 +268,6 @@
         selectedHex: null,
         selectedMmsi: null,
         selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
-        selectedMissLog: [],     // ring buffer of recent selected-plane render misses for self-reporting
         lastPollSelectedAt: 0,   // ms timestamp of last pollSelected write; gates bulk-fetch overwrites of the selected plane's position
         trendMin: (function () {
           // Trend vector projection length in minutes. User-cyclable on the card: 5 → 2 → 1 → 5.
@@ -1486,26 +1485,6 @@
         tr.textContent = head + " · " + state.rangeNm + " NM · " + contactLine + " CONTACTS";
       }
 
-      // Records a render miss for the selected plane with a reason code and
-      // a small state snapshot. Dedupes identical reasons within 1 s to keep
-      // the log compact. Drives the transient "MARKER HIDDEN" strip on the
-      // selected card by re-rendering it now and again after the 2 s window.
-      function recordSelectedMiss(reason, snap) {
-        var log = state.selectedMissLog || (state.selectedMissLog = []);
-        var now = Date.now();
-        var last = log.length ? log[log.length - 1] : null;
-        if (last && last.reason === reason && (now - last.t) < 1000) return;
-        log.push({ t: now, reason: reason, snap: snap || null });
-        if (log.length > 50) log.shift();
-        // Only "true miss" reasons drive the banner on the selected card.
-        // offBox still renders the chevron and doesn't need the re-render.
-        if (reason === "offBox") return;
-        try { renderSelected(); } catch (e) { /* ignore */ }
-        setTimeout(function () {
-          try { renderSelected(); } catch (e) { /* ignore */ }
-        }, 2050);
-      }
-
       // Altitude band -> chevron count (sergeant-rank pattern behind the
       // triangle). Shape is the altitude channel; plane color stays the
       // interest channel (default / selected / military / emergency / ground).
@@ -1540,8 +1519,6 @@
           : state.planes.slice();
         if (state.selectedHex && state.selectedPlaneData) {
           planes.push(state.selectedPlaneData);
-        } else if (state.selectedHex && !state.selectedPlaneData) {
-          recordSelectedMiss("selectedPlaneData.null", null);
         }
         if (state.lastSelectedPlane && (Date.now() - state.lastSelectedAt) < 30000) {
           var h = state.lastSelectedPlane.hex;
@@ -1559,13 +1536,8 @@
           // the card↔map link never breaks when a filter would otherwise
           // hide the selection.
           if (!passesPlaneFilter(p)) return;
-          var isSelForMiss = p.hex && p.hex === state.selectedHex;
-          if (isSelForMiss && (!isFinite(p.lat) || !isFinite(p.lon))) {
-            recordSelectedMiss("latlon.nonFinite", { lat: p.lat, lon: p.lon, baseLat: p.baseLat, baseLon: p.baseLon, baseAt: p.baseAt });
-          }
           var pt = project(p);
           if (!isFinite(pt.x) || !isFinite(pt.y)) {
-            if (isSelForMiss) recordSelectedMiss("projection.nonFinite", { lat: p.lat, lon: p.lon, px: pt.x, py: pt.y });
             return;
           }
           // Off-box: the selected plane gets an edge chevron so the user
@@ -1574,7 +1546,6 @@
           // with markers for dozens of planes a user isn't watching.
           if (Math.abs(pt.x) > 120 || Math.abs(pt.y) > 120) {
             if (!(p.hex && p.hex === state.selectedHex)) return;
-            recordSelectedMiss("offBox", { px: pt.x, py: pt.y });
             var edgeScale = 120 / Math.max(Math.abs(pt.x), Math.abs(pt.y));
             var ex = pt.x * edgeScale;
             var ey = pt.y * edgeScale;
@@ -2116,30 +2087,8 @@
           return;
         }
         selectedCard.classList.add("is-empty");
-        selectedCard.innerHTML = CLOSE_BUTTON_HTML + renderMissStrip() + '<div class="sel-empty">Acquiring…</div>';
+        selectedCard.innerHTML = CLOSE_BUTTON_HTML + '<div class="sel-empty">Acquiring…</div>';
         return;
-      }
-
-      // Transient banner shown on the selected card for 2 s after the last
-      // genuine render-miss for the currently-selected plane. "offBox" is
-      // tracked in the log for diagnostics but not surfaced here — the edge
-      // chevron is still visible in that case, so it's not a true miss.
-      function renderMissStrip() {
-        var log = state.selectedMissLog;
-        if (!log || !log.length) return "";
-        var now = Date.now();
-        for (var i = log.length - 1; i >= 0; i--) {
-          if (log[i].reason === "offBox") continue;
-          var age = now - log[i].t;
-          if (age > 2000) return "";
-          var ageStr = age < 1000 ? age + "ms ago" : Math.round(age / 100) / 10 + "s ago";
-          // Visible text is intentionally generic — internal reason codes
-          // (projection.nonFinite, latlon.nonFinite, etc.) are kept in
-          // state.selectedMissLog for diagnosis but never surfaced to
-          // the user.
-          return '<div class="sel-alert warn">⚠ MARKER BRIEFLY HIDDEN · ' + ageStr + '</div>';
-        }
-        return "";
       }
 
       function renderSelectedPlaneCard(p) {
@@ -2176,10 +2125,8 @@
           alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
         }
         var anomaliesHtml = renderAnomalyChips(p);
-        var missStrip = renderMissStrip();
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
-          missStrip +
           // Top strip (TRACK + ✕ inline) — close button lives inside
           // statusRowHtml so it aligns with the TRACK line vertically.
           statusRowHtml +
@@ -2514,7 +2461,6 @@
         state.selectedMmsi = null;
         state.lastSelectedPlane = null;
         state.lastSelectedAt = 0;
-        state.selectedMissLog = [];
         // Snapshot the plane from the current bulk fetch (if present) so
         // trail/route/icon stay drawn even after the plane leaves the bbox.
         var sp = null;
@@ -2549,7 +2495,6 @@
         state.selectedHex = null;
         state.selectedMmsi = null;
         state.selectedPlaneData = null;
-        state.selectedMissLog = [];
         stopSelectedPoll();
         fetchNow();
         renderRadar();
