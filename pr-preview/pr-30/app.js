@@ -1023,7 +1023,15 @@
       var IMAGERY_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
       var LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
       function chartBundleUrl(layer, z, x, y) {
-        return "https://wms.chartbundle.com/tms/v1.0/" + layer + "/" + z + "/" + x + "/" + y + ".png?type=google";
+        // Route via corsproxy.io (same proxy the ADS-B fetch layer uses
+        // for rate-limited sources). ChartBundle's direct endpoint
+        // appears to reject our requests from GitHub Pages — possibly
+        // hotlink protection, possibly ISP-level filtering of
+        // wms.chartbundle.com. Proxying gives us a cleaner diagnostic
+        // signal: if proxied tiles load, direct was blocked. If neither
+        // works, ChartBundle itself is down.
+        var direct = "https://wms.chartbundle.com/tms/v1.0/" + layer + "/" + z + "/" + x + "/" + y + ".png?type=google";
+        return viaCorsProxy(direct);
       }
       var MAP_LAYERS = {
         "satellite": {
