@@ -268,7 +268,6 @@
         selectedHex: null,
         selectedMmsi: null,
         selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
-        selectedMissLog: [],     // ring buffer of recent selected-plane render misses for self-reporting
         lastPollSelectedAt: 0,   // ms timestamp of last pollSelected write; gates bulk-fetch overwrites of the selected plane's position
         trendMin: (function () {
           // Trend vector projection length in minutes. User-cyclable on the card: 5 → 2 → 1 → 5.
@@ -1486,26 +1485,6 @@
         tr.textContent = head + " · " + state.rangeNm + " NM · " + contactLine + " CONTACTS";
       }
 
-      // Records a render miss for the selected plane with a reason code and
-      // a small state snapshot. Dedupes identical reasons within 1 s to keep
-      // the log compact. Drives the transient "MARKER HIDDEN" strip on the
-      // selected card by re-rendering it now and again after the 2 s window.
-      function recordSelectedMiss(reason, snap) {
-        var log = state.selectedMissLog || (state.selectedMissLog = []);
-        var now = Date.now();
-        var last = log.length ? log[log.length - 1] : null;
-        if (last && last.reason === reason && (now - last.t) < 1000) return;
-        log.push({ t: now, reason: reason, snap: snap || null });
-        if (log.length > 50) log.shift();
-        // Only "true miss" reasons drive the banner on the selected card.
-        // offBox still renders the chevron and doesn't need the re-render.
-        if (reason === "offBox") return;
-        try { renderSelected(); } catch (e) { /* ignore */ }
-        setTimeout(function () {
-          try { renderSelected(); } catch (e) { /* ignore */ }
-        }, 2050);
-      }
-
       // Altitude band -> chevron count (sergeant-rank pattern behind the
       // triangle). Shape is the altitude channel; plane color stays the
       // interest channel (default / selected / military / emergency / ground).
@@ -1540,8 +1519,6 @@
           : state.planes.slice();
         if (state.selectedHex && state.selectedPlaneData) {
           planes.push(state.selectedPlaneData);
-        } else if (state.selectedHex && !state.selectedPlaneData) {
-          recordSelectedMiss("selectedPlaneData.null", null);
         }
         if (state.lastSelectedPlane && (Date.now() - state.lastSelectedAt) < 30000) {
           var h = state.lastSelectedPlane.hex;
@@ -1559,13 +1536,8 @@
           // the card↔map link never breaks when a filter would otherwise
           // hide the selection.
           if (!passesPlaneFilter(p)) return;
-          var isSelForMiss = p.hex && p.hex === state.selectedHex;
-          if (isSelForMiss && (!isFinite(p.lat) || !isFinite(p.lon))) {
-            recordSelectedMiss("latlon.nonFinite", { lat: p.lat, lon: p.lon, baseLat: p.baseLat, baseLon: p.baseLon, baseAt: p.baseAt });
-          }
           var pt = project(p);
           if (!isFinite(pt.x) || !isFinite(pt.y)) {
-            if (isSelForMiss) recordSelectedMiss("projection.nonFinite", { lat: p.lat, lon: p.lon, px: pt.x, py: pt.y });
             return;
           }
           // Off-box: the selected plane gets an edge chevron so the user
@@ -1574,7 +1546,6 @@
           // with markers for dozens of planes a user isn't watching.
           if (Math.abs(pt.x) > 120 || Math.abs(pt.y) > 120) {
             if (!(p.hex && p.hex === state.selectedHex)) return;
-            recordSelectedMiss("offBox", { px: pt.x, py: pt.y });
             var edgeScale = 120 / Math.max(Math.abs(pt.x), Math.abs(pt.y));
             var ex = pt.x * edgeScale;
             var ey = pt.y * edgeScale;
@@ -1860,6 +1831,9 @@
             var active = state.listFilter === f.k ? " active" : "";
             return '<button class="chip' + active + '" data-k="' + f.k + '">' + f.label + '</button>';
           }).join("") + '</div>');
+        // Chevron-band quick filter (ALL + 0-4 chevrons). Taps tween the
+        // dual-thumb alt slider below to the band's edges.
+        parts.push(renderAltBandRow());
         // Altitude range: dual-thumb slider + readout. Two overlaid range
         // inputs, a shared track behind, and a "fill" bar showing the
         // selected range. Extremes (0 / 50k) read as "ALL" = filter off.
@@ -1891,6 +1865,7 @@
               var k = btn.dataset.k;
               if (kind === "plane-filter") setListOption("filter", k);
               else if (kind === "plane-sort") setListOption("sort", k);
+              else if (kind === "plane-alt-band") selectAltBand(k);
               else if (kind === "ship-filter") setListOption("shipFilter", k);
               else if (kind === "ship-sort") setListOption("shipSort", k);
             });
@@ -1930,6 +1905,118 @@
           '<span class="alt-range-readout" id="altRangeReadout">' + formatAltRangeText() + '</span>' +
         '</div>';
       }
+
+      // Altitude quick-filter: six chips keyed to the chevron-count bands
+      // defined by altitudeChevronCount(). Tapping a chip tweens the
+      // dual-thumb alt slider to the band edges; the underlying filter
+      // state (altMinFt / altMaxFt) is the same storage path as the
+      // slider, so the chip is a shortcut, not a parallel filter.
+      var ALT_BANDS = {
+        "all": [0, 50000],
+        "0":   [0, 10000],
+        "1":   [10000, 20000],
+        "2":   [20000, 30000],
+        "3":   [30000, 40000],
+        "4":   [40000, 50000]
+      };
+      function altBandMatchKey(minFt, maxFt) {
+        var keys = ["all", "0", "1", "2", "3", "4"];
+        for (var i = 0; i < keys.length; i++) {
+          var b = ALT_BANDS[keys[i]];
+          if (b[0] === minFt && b[1] === maxFt) return keys[i];
+        }
+        return null;
+      }
+      function altBandIconSvg(n) {
+        if (n === 0) {
+          return '<svg viewBox="0 0 20 16" class="alt-band-icon" aria-hidden="true">' +
+            '<line x1="5" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
+          '</svg>';
+        }
+        var svg = '<svg viewBox="0 0 20 16" class="alt-band-icon" aria-hidden="true">';
+        var bottomApex = 13;
+        for (var i = 0; i < n; i++) {
+          var apexY = bottomApex - i * 3;
+          svg += '<polyline points="6,' + (apexY + 2) + ' 10,' + apexY + ' 14,' + (apexY + 2) + '" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
+        }
+        svg += '</svg>';
+        return svg;
+      }
+      function renderAltBandRow() {
+        var active = altBandMatchKey(state.altMinFt, state.altMaxFt);
+        var chips = [
+          { k: "all", label: "ALL", icon: "", aria: "All altitudes" },
+          { k: "0",   label: "",    icon: altBandIconSvg(0), aria: "Below 10,000 ft" },
+          { k: "1",   label: "",    icon: altBandIconSvg(1), aria: "10,000 to 20,000 ft" },
+          { k: "2",   label: "",    icon: altBandIconSvg(2), aria: "20,000 to 30,000 ft" },
+          { k: "3",   label: "",    icon: altBandIconSvg(3), aria: "30,000 to 40,000 ft" },
+          { k: "4",   label: "",    icon: altBandIconSvg(4), aria: "Above 40,000 ft" }
+        ];
+        return '<div class="chip-row alt-band-row" data-kind="plane-alt-band">' +
+          '<span class="chip-row-label">BAND</span>' +
+          chips.map(function (c) {
+            var on = active === c.k ? " active" : "";
+            return '<button class="chip alt-band-chip' + on + '" data-k="' + c.k + '" aria-label="' + c.aria + '">' +
+              c.icon + (c.label ? '<span class="alt-band-txt">' + c.label + '</span>' : '') +
+            '</button>';
+          }).join("") +
+        '</div>';
+      }
+      var altBandTweenRaf = 0;
+      function tweenAltBand(targetMin, targetMax) {
+        if (altBandTweenRaf) cancelAnimationFrame(altBandTweenRaf);
+        var startMin = state.altMinFt;
+        var startMax = state.altMaxFt;
+        var t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        var DUR = 180;
+        var altMinInput = document.getElementById("altMinInput");
+        var altMaxInput = document.getElementById("altMaxInput");
+        function step(now) {
+          var elapsed = now - t0;
+          var t = Math.min(1, elapsed / DUR);
+          var lo = Math.round((startMin + (targetMin - startMin) * t) / 500) * 500;
+          var hi = Math.round((startMax + (targetMax - startMax) * t) / 500) * 500;
+          state.altMinFt = lo;
+          state.altMaxFt = hi;
+          if (altMinInput) altMinInput.value = lo;
+          if (altMaxInput) altMaxInput.value = hi;
+          updateAltRangeUi();
+          if (t < 1) {
+            altBandTweenRaf = requestAnimationFrame(step);
+            return;
+          }
+          altBandTweenRaf = 0;
+          state.altMinFt = targetMin;
+          state.altMaxFt = targetMax;
+          if (altMinInput) altMinInput.value = targetMin;
+          if (altMaxInput) altMaxInput.value = targetMax;
+          updateAltRangeUi();
+          try {
+            localStorage.setItem("list.altMin", String(targetMin));
+            localStorage.setItem("list.altMax", String(targetMax));
+          } catch (err) {}
+          updateAltBandChips();
+          renderRadar();
+          renderListEntries();
+        }
+        altBandTweenRaf = requestAnimationFrame(function (now) {
+          step(now != null ? now : (performance.now ? performance.now() : Date.now()));
+        });
+      }
+      function updateAltBandChips() {
+        var activeKey = altBandMatchKey(state.altMinFt, state.altMaxFt);
+        var row = document.querySelector('[data-kind="plane-alt-band"]');
+        if (!row) return;
+        var chips = row.querySelectorAll(".chip[data-k]");
+        for (var i = 0; i < chips.length; i++) {
+          chips[i].classList.toggle("active", chips[i].dataset.k === activeKey);
+        }
+      }
+      function selectAltBand(band) {
+        var target = ALT_BANDS[band];
+        if (!target) return;
+        tweenAltBand(target[0], target[1]);
+      }
       function updateAltRangeUi() {
         var fill = document.getElementById("altRangeFill");
         var readout = document.getElementById("altRangeReadout");
@@ -1945,6 +2032,7 @@
           var active = !(state.altMinFt === 0 && state.altMaxFt >= 50000);
           row.classList.toggle("active", active);
         }
+        updateAltBandChips();
       }
       function wireAltRangeSlider() {
         var altMin = document.getElementById("altMinInput");
@@ -2116,30 +2204,8 @@
           return;
         }
         selectedCard.classList.add("is-empty");
-        selectedCard.innerHTML = CLOSE_BUTTON_HTML + renderMissStrip() + '<div class="sel-empty">Acquiring…</div>';
+        selectedCard.innerHTML = CLOSE_BUTTON_HTML + '<div class="sel-empty">Acquiring…</div>';
         return;
-      }
-
-      // Transient banner shown on the selected card for 2 s after the last
-      // genuine render-miss for the currently-selected plane. "offBox" is
-      // tracked in the log for diagnostics but not surfaced here — the edge
-      // chevron is still visible in that case, so it's not a true miss.
-      function renderMissStrip() {
-        var log = state.selectedMissLog;
-        if (!log || !log.length) return "";
-        var now = Date.now();
-        for (var i = log.length - 1; i >= 0; i--) {
-          if (log[i].reason === "offBox") continue;
-          var age = now - log[i].t;
-          if (age > 2000) return "";
-          var ageStr = age < 1000 ? age + "ms ago" : Math.round(age / 100) / 10 + "s ago";
-          // Visible text is intentionally generic — internal reason codes
-          // (projection.nonFinite, latlon.nonFinite, etc.) are kept in
-          // state.selectedMissLog for diagnosis but never surfaced to
-          // the user.
-          return '<div class="sel-alert warn">⚠ MARKER BRIEFLY HIDDEN · ' + ageStr + '</div>';
-        }
-        return "";
       }
 
       function renderSelectedPlaneCard(p) {
@@ -2176,10 +2242,8 @@
           alertsHtml += '<div class="sel-alert notable">NOTABLE · ' + escapeHtml(state.aircraftOwner[hexLower].label) + '</div>';
         }
         var anomaliesHtml = renderAnomalyChips(p);
-        var missStrip = renderMissStrip();
         var subtitle = reg + (reg && typ !== "—" ? " · " : "") + (typ !== "—" ? escapeHtml(typ) : "");
         selectedCard.innerHTML =
-          missStrip +
           // Top strip (TRACK + ✕ inline) — close button lives inside
           // statusRowHtml so it aligns with the TRACK line vertically.
           statusRowHtml +
@@ -2514,7 +2578,6 @@
         state.selectedMmsi = null;
         state.lastSelectedPlane = null;
         state.lastSelectedAt = 0;
-        state.selectedMissLog = [];
         // Snapshot the plane from the current bulk fetch (if present) so
         // trail/route/icon stay drawn even after the plane leaves the bbox.
         var sp = null;
@@ -2549,7 +2612,6 @@
         state.selectedHex = null;
         state.selectedMmsi = null;
         state.selectedPlaneData = null;
-        state.selectedMissLog = [];
         stopSelectedPoll();
         fetchNow();
         renderRadar();
