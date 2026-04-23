@@ -311,7 +311,7 @@
         // Base map tile source. Satellite default; VFR/IFR charts are
         // opt-in via the settings-panel picker. US-only for non-satellite
         // layers (ChartBundle serves FAA public-domain charts).
-        mapLayer: "satellite"     // "satellite" | "sectional" | "ifr-low" | "ifr-high"
+        mapLayer: "satellite"     // "satellite" | "sectional" | "vfr-terminal" | "ifr-low" | "ifr-high"
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
       try {
@@ -327,6 +327,7 @@
         state.shipSortDesc = localStorage.getItem("list.shipSortDesc") === "1";
         var storedLayer = localStorage.getItem("map.layer");
         if (storedLayer === "satellite" || storedLayer === "sectional" ||
+            storedLayer === "vfr-terminal" ||
             storedLayer === "ifr-low" || storedLayer === "ifr-high") {
           state.mapLayer = storedLayer;
         }
@@ -1058,7 +1059,7 @@
         // sticker reflects the actual operability at the user's
         // location, not a static "this feature doesn't work anywhere".
         var inCoverage = isInFaaCoverage(state.center.lat, state.center.lon);
-        var ids = ["sectional", "ifr-low", "ifr-high"];
+        var ids = ["sectional", "vfr-terminal", "ifr-low", "ifr-high"];
         for (var i = 0; i < ids.length; i++) {
           var btn = document.querySelector('.map-layer-option[data-map-layer="' + ids[i] + '"]');
           if (btn) btn.classList.toggle("inop", !inCoverage);
@@ -1084,6 +1085,21 @@
           zoomBoost: 1,
           hasLabels: false,
           attribution: "VFR Sectional © FAA · ArcGIS Online · US only"
+        },
+        "vfr-terminal": {
+          label: "VFR Terminal",
+          url: function (z, x, y) { return faaArcgisUrl("VFR_Terminal", z, x, y); },
+          // Terminal Area Charts are 1:250,000 vs Sectional's 1:500,000
+          // (2× the detail density), so their useful zoom window sits a
+          // bit deeper. Defaults mirror Sectional (8–12) as a starting
+          // point; if the diagnostic banner shows failures at the edges
+          // we tighten minZoom up or maxZoom down per the service's
+          // advertised LOD range from ?f=pjson.
+          minZoom: 8,
+          maxZoom: 12,
+          zoomBoost: 1,
+          hasLabels: false,
+          attribution: "VFR Terminal Area Chart © FAA · ArcGIS Online · US only"
         },
         "ifr-low": {
           label: "IFR Low",
