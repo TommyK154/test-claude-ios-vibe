@@ -526,6 +526,8 @@
         // user pans to LA but the key is still subscribed to the initial
         // center, and no ships appear.
         resubscribeAis();
+        // INOP sticker state tracks the new center's FAA coverage.
+        updateInopStickers();
       }
 
       function setStatus(msg) {
@@ -1022,16 +1024,49 @@
       // airports / airspace / fixes already baked into the tile.
       var IMAGERY_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
       var LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/";
-      function chartBundleUrl(layer, z, x, y) {
-        // Route via corsproxy.io (same proxy the ADS-B fetch layer uses
-        // for rate-limited sources). ChartBundle's direct endpoint
-        // appears to reject our requests from GitHub Pages — possibly
-        // hotlink protection, possibly ISP-level filtering of
-        // wms.chartbundle.com. Proxying gives us a cleaner diagnostic
-        // signal: if proxied tiles load, direct was blocked. If neither
-        // works, ChartBundle itself is down.
-        var direct = "https://wms.chartbundle.com/tms/v1.0/" + layer + "/" + z + "/" + x + "/" + y + ".png?type=google";
-        return viaCorsProxy(direct);
+      // FAA's own aeronautical charts hosted on ArcGIS Online. The
+      // AeronauticalInformationServices_FAA org publishes tiled raster
+      // sectionals + IFR enroute charts at LOD 8–12 (per the service
+      // metadata at <base>/<service>/MapServer?f=pjson). Same tile
+      // pattern our satellite IMAGERY_URL uses: {z}/{y}/{x} (ArcGIS
+      // scheme, y before x). No API key, CORS-clean (Esri's standard
+      // for anonymous-read tile services). ChartBundle (prior source)
+      // went offline; PR #30 confirmed direct + corsproxy both fail.
+      // Rough FAA chart coverage bbox — CONUS + Alaska + Hawaii + US
+      // territories. FAA's ArcGIS services only publish tiles inside
+      // this region; requests outside return nothing useful. We check
+      // state.center on every map re-center and use this to (a) show
+      // an "OUT OF COVERAGE · US ONLY" banner instead of firing tile
+      // requests that will all fail, (b) restore the INOP sticker on
+      // the chart buttons so users know the layer won't work at their
+      // current location. The box is intentionally generous at the
+      // edges (includes ocean around Hawaii and bits of Mexico /
+      // Canada airspace near the border) — tiles themselves return
+      // nothing over non-US territory, so "in coverage" is a
+      // necessary-not-sufficient signal; the real test is whether
+      // tiles load. When they don't despite coverage=true, the
+      // existing UNAVAILABLE banner kicks in.
+      var FAA_COVERAGE = { minLat: 17, maxLat: 72, minLon: -180, maxLon: -65 };
+      function isInFaaCoverage(lat, lon) {
+        return lat >= FAA_COVERAGE.minLat && lat <= FAA_COVERAGE.maxLat
+            && lon >= FAA_COVERAGE.minLon && lon <= FAA_COVERAGE.maxLon;
+      }
+      function updateInopStickers() {
+        // Restore the INOP sticker overlay on chart-layer buttons when
+        // the radar center is outside FAA coverage; strip it when
+        // inside. Called from onCenterChanged and once on boot so the
+        // sticker reflects the actual operability at the user's
+        // location, not a static "this feature doesn't work anywhere".
+        var inCoverage = isInFaaCoverage(state.center.lat, state.center.lon);
+        var ids = ["sectional", "ifr-low", "ifr-high"];
+        for (var i = 0; i < ids.length; i++) {
+          var btn = document.querySelector('.map-layer-option[data-map-layer="' + ids[i] + '"]');
+          if (btn) btn.classList.toggle("inop", !inCoverage);
+        }
+      }
+      var FAA_ARCGIS_BASE = "https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/";
+      function faaArcgisUrl(service, z, x, y) {
+        return FAA_ARCGIS_BASE + service + "/MapServer/tile/" + z + "/" + y + "/" + x;
       }
       var MAP_LAYERS = {
         "satellite": {
@@ -1043,24 +1078,30 @@
         },
         "sectional": {
           label: "VFR Sectional",
-          url: function (z, x, y) { return chartBundleUrl("sec", z, x, y); },
+          url: function (z, x, y) { return faaArcgisUrl("VFR_Sectional", z, x, y); },
+          minZoom: 8,
           maxZoom: 12,
+          zoomBoost: 1,
           hasLabels: false,
-          attribution: "VFR charts © ChartBundle.com · FAA public domain · US only"
+          attribution: "VFR Sectional © FAA · ArcGIS Online · US only"
         },
         "ifr-low": {
           label: "IFR Low",
-          url: function (z, x, y) { return chartBundleUrl("enrl", z, x, y); },
-          maxZoom: 11,
+          url: function (z, x, y) { return faaArcgisUrl("IFR_AreaLow", z, x, y); },
+          minZoom: 8,
+          maxZoom: 12,
+          zoomBoost: 1,
           hasLabels: false,
-          attribution: "IFR low enroute © ChartBundle.com · FAA public domain · US only"
+          attribution: "IFR Low Enroute © FAA · ArcGIS Online · US only"
         },
         "ifr-high": {
           label: "IFR High",
-          url: function (z, x, y) { return chartBundleUrl("enrh", z, x, y); },
-          maxZoom: 11,
+          url: function (z, x, y) { return faaArcgisUrl("IFR_High", z, x, y); },
+          minZoom: 8,
+          maxZoom: 12,
+          zoomBoost: 1,
           hasLabels: false,
-          attribution: "IFR high enroute © ChartBundle.com · FAA public domain · US only"
+          attribution: "IFR High Enroute © FAA · ArcGIS Online · US only"
         }
       };
       function currentMapLayer() {
@@ -1136,6 +1177,15 @@
         // user taps to copy the full diagnostic.
         var layerInfo = MAP_LAYERS[s.layer] || {};
         var friendlyName = (layerInfo.label || s.layer).toUpperCase();
+        if (s.outOfCoverage) {
+          // Distinct banner for the "you're not in the US" case — tells
+          // the user *why* the chart is empty here, instead of the
+          // generic UNAVAILABLE which reads like a server-side failure.
+          el.hidden = false;
+          el.className = "tile-status err";
+          el.textContent = friendlyName + " · OUT OF COVERAGE · US ONLY";
+          return;
+        }
         if (allFailed || someFailed) {
           el.hidden = false;
           el.className = "tile-status err";
@@ -1162,17 +1212,41 @@
         // visible diagnostic rather than a silent black radar. Reset each
         // render; placeTile's load/error handlers increment these and
         // updateTileStatus() writes a banner if too many fail.
+        var isChart = state.mapLayer !== "satellite";
         tileLoadState = {
           layer: state.mapLayer,
           requested: 0,
           loaded: 0,
           errored: 0,
           lastError: null,
+          // Pre-computed coverage flag. When true we skip the tile loop
+          // entirely and updateTileStatus shows a specific "OUT OF
+          // COVERAGE" message instead of the generic UNAVAILABLE one
+          // that would arrive after N/N tile errors.
+          outOfCoverage: isChart && !isInFaaCoverage(center.lat, center.lon),
           renderStartedAt: Date.now()
         };
-        // Chart layers (VFR / IFR) top out lower than satellite; clamp so
-        // we don't request tiles ChartBundle will 404 on.
-        var z = Math.min(layer.maxZoom, computeTileZoom(center.lat, state.rangeNm));
+        if (tileLoadState.outOfCoverage) {
+          updateTileStatus();
+          return;
+        }
+        // Chart layers have a publisher-defined LOD range (FAA's ArcGIS
+        // tiles exist at z=8..12 only). Clamp both ends so we don't
+        // request tiles the service will 404 on at very wide or very
+        // close zoom. Below minZoom we render the coarsest available
+        // tile stretched out (already blocky, not a regression); above
+        // maxZoom we render the deepest tile upscaled.
+        //
+        // layer.zoomBoost is an extra over-request on top of the retina
+        // hd adjustment baked into computeTileZoom. Used on chart
+        // layers: FAA publishes full chart detail at each LOD level, so
+        // z=8 tiles have fine lettering/airways compressed into a tile
+        // that covers ~66 NM at mid-latitudes. Rendering those across
+        // a wider radar amplifies MIXED-format JPEG artifacts. Pulling
+        // the next deeper LOD gives each tile sharper underlying pixels;
+        // the maxZoom clamp prevents runaway oversampling at close zoom.
+        var rawZ = computeTileZoom(center.lat, state.rangeNm);
+        var z = Math.max(layer.minZoom || 0, Math.min(layer.maxZoom, rawZ + (layer.zoomBoost || 0)));
         var n = Math.pow(2, z);
         var latRad = center.lat * Math.PI / 180;
         var centerTileX = (center.lon + 180) / 360 * n;
@@ -1947,7 +2021,11 @@
           var age = now - log[i].t;
           if (age > 2000) return "";
           var ageStr = age < 1000 ? age + "ms ago" : Math.round(age / 100) / 10 + "s ago";
-          return '<div class="sel-alert warn">⚠ MARKER HIDDEN · ' + log[i].reason + ' · ' + ageStr + '</div>';
+          // Visible text is intentionally generic — internal reason codes
+          // (projection.nonFinite, latlon.nonFinite, etc.) are kept in
+          // state.selectedMissLog for diagnosis but never surfaced to
+          // the user.
+          return '<div class="sel-alert warn">⚠ MARKER BRIEFLY HIDDEN · ' + ageStr + '</div>';
         }
         return "";
       }
@@ -3337,11 +3415,11 @@
             }
           }
           if (totalFrames === 0) {
-            aisStatus("AIS CONNECTED · NO FRAMES IN 30s · check aisstream account verification or free-tier rate limit", "warn");
+            aisStatus("AIS CONNECTED · NO SHIP DATA · verify aisstream key or try a busy port", "warn");
           } else if (!hasNonError) {
-            aisStatus("AIS CONNECTED · errors only, no position data · check aisstream account", "warn");
+            aisStatus("AIS CONNECTED · RECEIVING ERRORS · verify aisstream key", "warn");
           } else {
-            aisStatus("AIS CONNECTED · quiet area · try a busy port preset to confirm", "ok");
+            aisStatus("AIS CONNECTED · QUIET AREA · try a busy port", "ok");
           }
           renderAisDiag();
         }, 30000);
@@ -3431,7 +3509,7 @@
               }
               if (mt && mt.toLowerCase() === "error") {
                 var err = msg.Error || msg.error || msg.message || "unknown";
-                aisStatus("AIS: " + String(err).toUpperCase(), "err");
+                aisStatus("AIS CONNECTION ERROR · retrying", "err");
                 renderAisDiag();
                 return;
               }
@@ -3498,7 +3576,7 @@
             aisStatus("AIS ERROR · CHECK KEY", "err");
           });
         } catch (err) {
-          aisStatus("AIS FAILED: " + (err && err.message ? err.message : "unknown"), "err");
+          aisStatus("AIS FAILED · check aisstream key", "err");
         }
       }
 
@@ -3725,6 +3803,7 @@
       setupMapLayerPicker();
       setupTileStatusCopy();
       updateAttributionFooter();
+      updateInopStickers();
       // Collapsible controls panel
       (function () {
         var panel = document.getElementById("controlsPanel");
