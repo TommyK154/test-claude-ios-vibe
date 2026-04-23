@@ -367,20 +367,10 @@
       var presetRow = $("presetRow");
       var latInput = $("latInput");
       var lonInput = $("lonInput");
-      // Slider 0–100 maps logarithmically to 5–500 NM.
       var RANGE_MIN = 5;
       var RANGE_MAX = 500;
-      function sliderToNm(v) {
-        var t = v / 100;
-        var nm = Math.exp(Math.log(RANGE_MIN) + t * (Math.log(RANGE_MAX) - Math.log(RANGE_MIN)));
-        return Math.max(RANGE_MIN, Math.min(RANGE_MAX, Math.round(nm)));
-      }
-      function nmToSlider(nm) {
-        nm = Math.max(RANGE_MIN, Math.min(RANGE_MAX, nm));
-        var t = (Math.log(nm) - Math.log(RANGE_MIN)) / (Math.log(RANGE_MAX) - Math.log(RANGE_MIN));
-        return t * 100;
-      }
-      var rangeInput = null;
+      // Detents for the range stepper's long-press ramp mode.
+      var RANGE_DETENTS = [5, 10, 20, 50, 100, 200, 500];
       var rangeVal = null;
       var radarLoc = $("radarLoc");
       var radarCount = $("radarCount");
@@ -1315,7 +1305,7 @@
         // render; placeTile's load/error handlers increment these and
         // updateTileStatus() writes a banner if too many fail.
         // Keep the INOP stickers in sync with whatever we're about to
-        // try rendering — so range changes (rangeSlider + pinch) reflect
+        // try rendering — so range changes (steppers + pinch) reflect
         // in the dropdown, not just preset/pan changes. Cheap: 4 DOM
         // queries + classList toggles per renderTiles call.
         updateInopStickers();
@@ -2899,34 +2889,87 @@
         if (readCoordInputs()) onCenterChanged();
       });
 
-      var rangeSlider = document.getElementById("rangeSlider");
       var rangeValEl = document.getElementById("rangeVal");
+      var rangeUpBtn = document.getElementById("rangeUp");
+      var rangeDownBtn = document.getElementById("rangeDown");
       function applyRange(nm, options) {
         options = options || {};
         nm = Math.max(RANGE_MIN, Math.min(RANGE_MAX, Math.round(nm)));
         if (nm === state.rangeNm && !options.force) return;
         state.rangeNm = nm;
         if (rangeValEl) rangeValEl.textContent = nm + " NM";
-        if (rangeSlider) rangeSlider.value = nmToSlider(nm).toFixed(1);
         updateRangeLabels();
         if (!options.skipRender) renderTiles();
         if (!options.skipFetch) { fetchNow(); resubscribeAis(); renderShips(); }
       }
-      if (rangeSlider) {
-        if (rangeValEl) rangeValEl.textContent = state.rangeNm + " NM";
-        rangeSlider.value = nmToSlider(state.rangeNm).toFixed(1);
-        var rangeChangeTimer = null;
-        rangeSlider.addEventListener("input", function () {
-          var nm = sliderToNm(parseFloat(rangeSlider.value));
-          state.rangeNm = nm;
-          if (rangeValEl) rangeValEl.textContent = nm + " NM";
-          updateRangeLabels();
-          if (rangeChangeTimer) clearTimeout(rangeChangeTimer);
-          rangeChangeTimer = setTimeout(function () {
-            renderTiles(); fetchNow(); resubscribeAis(); renderShips();
-          }, 180);
-        });
+      if (rangeValEl) rangeValEl.textContent = state.rangeNm + " NM";
+
+      // Range steppers (digital-instrument ± controls).
+      // Short tap = ±1 NM (fine). Long-press (500 ms threshold) enters a
+      // ramp mode that advances every 250 ms to the next detent in the
+      // pressed direction (RANGE_DETENTS). Readout stays bound to
+      // state.rangeNm so continuous values set by pinch-zoom display
+      // naturally (e.g. 38.7 NM renders as "39 NM"). Network side
+      // effects are debounced 180 ms past the last tick so rapid taps
+      // / ramp ticks coalesce into one fetch — matches the cadence the
+      // native slider's input-handler used to keep.
+      function nextRangeDetent(nm, dir) {
+        if (dir > 0) {
+          for (var i = 0; i < RANGE_DETENTS.length; i++) {
+            if (RANGE_DETENTS[i] > nm) return RANGE_DETENTS[i];
+          }
+          return null;
+        }
+        for (var j = RANGE_DETENTS.length - 1; j >= 0; j--) {
+          if (RANGE_DETENTS[j] < nm) return RANGE_DETENTS[j];
+        }
+        return null;
       }
+      var rangeChangeTimer = null;
+      function applyRangeFromStepper(nm) {
+        applyRange(nm, { skipRender: true, skipFetch: true });
+        if (rangeChangeTimer) clearTimeout(rangeChangeTimer);
+        rangeChangeTimer = setTimeout(function () {
+          renderTiles(); fetchNow(); resubscribeAis(); renderShips();
+        }, 180);
+      }
+      function wireRangeStepper(btn, dir) {
+        if (!btn) return;
+        var holdTimer = null;
+        var rampTimer = null;
+        function stopAll() {
+          if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+          if (rampTimer) { clearTimeout(rampTimer); rampTimer = null; }
+        }
+        function tickRamp() {
+          var next = nextRangeDetent(state.rangeNm, dir);
+          if (next == null) { stopAll(); return; }
+          applyRangeFromStepper(next);
+          rampTimer = setTimeout(tickRamp, 250);
+        }
+        btn.addEventListener("pointerdown", function (e) {
+          e.preventDefault();
+          stopAll();
+          holdTimer = setTimeout(function () {
+            holdTimer = null;
+            tickRamp();
+          }, 500);
+        });
+        function onRelease() {
+          if (holdTimer) {
+            // Released before long-press threshold — short tap = ±1 NM.
+            clearTimeout(holdTimer);
+            holdTimer = null;
+            applyRangeFromStepper(state.rangeNm + dir);
+          }
+          if (rampTimer) { clearTimeout(rampTimer); rampTimer = null; }
+        }
+        btn.addEventListener("pointerup", onRelease);
+        btn.addEventListener("pointercancel", onRelease);
+        btn.addEventListener("pointerleave", onRelease);
+      }
+      wireRangeStepper(rangeDownBtn, -1);
+      wireRangeStepper(rangeUpBtn, +1);
 
       document.addEventListener("visibilitychange", function () {
         if (document.hidden) {

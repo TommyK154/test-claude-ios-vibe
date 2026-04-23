@@ -75,10 +75,11 @@
         </div>
       </div>
       <div class="range-row">
-        <label for="rangeSlider">Range <span class="muted">(pinch on the radar to zoom)</span></label>
-        <div class="range-slider-wrap">
-          <input id="rangeSlider" type="range" min="0" max="100" step="1" value="50" aria-label="Radar range">
-          <span class="range-val" id="rangeVal">50 NM</span>
+        <label>Range <span class="muted">(pinch on the radar to zoom)</span></label>
+        <div class="range-steppers">
+          <button id="rangeDown" class="range-step" type="button" aria-label="Decrease range">−</button>
+          <span class="range-readout" id="rangeVal" aria-live="polite">50 NM</span>
+          <button id="rangeUp" class="range-step" type="button" aria-label="Increase range">+</button>
         </div>
       </div>
       </div>

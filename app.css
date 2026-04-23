@@ -53,7 +53,7 @@
       min-height: 100vh;
     }
     .mono, input[inputmode="decimal"], .pr-call, .pr-dist, .pr-sub,
-    .sel-call, .sel-reg, .sel-cell .v, .range-val, #statusText,
+    .sel-call, .sel-reg, .sel-cell .v, #statusText,
     .radar-overlay, .tactical-strip .readout {
       font-family: var(--mono);
       font-variant-numeric: tabular-nums;
@@ -439,23 +439,43 @@
       font-weight: 600;
     }
     .range-row label .muted { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0.02em; }
-    .range-slider-wrap {
+    /* Range steppers: digital-instrument ± controls flanking a big mono
+       NM readout. Short tap = fine (±1 NM), long-press = ramp through
+       the log detents [5, 10, 20, 50, 100, 200, 500] NM. Mirrors
+       state.rangeNm directly so pinch-set continuous values display
+       naturally. */
+    .range-steppers {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      gap: 14px;
     }
-    #rangeSlider {
-      flex: 1;
+    .range-step {
+      min-width: 44px;
       min-height: 44px;
-      accent-color: var(--accent);
-    }
-    .range-val {
-      flex: 0 0 auto;
-      min-width: 72px;
-      text-align: right;
+      padding: 0 14px;
+      border: 1px solid var(--border-2);
+      border-radius: 6px;
+      background: var(--surface, rgba(255, 255, 255, 0.04));
+      color: var(--accent);
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 14px;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .range-step:active { background: var(--accent); color: var(--bg, #fff); }
+    .range-readout {
+      flex: 0 0 auto;
+      min-width: 88px;
+      text-align: center;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 20px;
       color: var(--accent);
       letter-spacing: 0.04em;
     }
