@@ -926,14 +926,16 @@
     .map-layer-option.inop[data-inop-code="us-only"]::after { content: "INOP (US only)"; }
     .map-layer-option.inop[data-inop-code="range"]::after   { content: "INOP (<30 NM only)"; }
     .map-layer-option.inop[data-inop-code="no-tac"]::after  { content: "INOP (no TAC)"; }
-    /* Three distinct slants so the stickers read as hand-applied, not
-       machine-stamped. All kept within ±4°. IFR Low : IFR High
-       magnitudes sit at ~golden ratio (4 : 2.5 ≈ 1.6 : 1) in opposite
-       directions — pleasing asymmetry without looking deliberate. */
+    /* Four distinct slants so the stickers read as hand-applied in the
+       stacked map-layer dropdown. Magnitudes form a descending golden-
+       ratio sequence (each ~1.618× smaller than the previous) bounded
+       at ±3°: 3° → 1.85° → 1.15° → 0.7°. Signs alternate so adjacent
+       stickers tilt opposite directions. The biggest tilt sits on the
+       first (most-prominent) sticker and the smallest on the last. */
     .map-layer-option.inop[data-map-layer="sectional"]::after     { transform: rotate(-3deg); }
-    .map-layer-option.inop[data-map-layer="vfr-terminal"]::after  { transform: rotate(1.5deg); }
-    .map-layer-option.inop[data-map-layer="ifr-low"]::after       { transform: rotate(4deg); }
-    .map-layer-option.inop[data-map-layer="ifr-high"]::after      { transform: rotate(-2.5deg); }
+    .map-layer-option.inop[data-map-layer="vfr-terminal"]::after  { transform: rotate(1.85deg); }
+    .map-layer-option.inop[data-map-layer="ifr-low"]::after       { transform: rotate(-1.15deg); }
+    .map-layer-option.inop[data-map-layer="ifr-high"]::after      { transform: rotate(0.7deg); }
 
     /* LEAD pill — collapses to label+value, expands to 3-option segmented
        on tap. Width transitions + options stagger-fade in for a tactile feel. */
