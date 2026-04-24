@@ -1121,13 +1121,15 @@
       // and the tile-status banner never disagree.
       function chartLayerAvailability(layerId, lat, lon, rangeNm) {
         if (layerId === "satellite") return { ok: true };
-        if (!isInFaaCoverage(lat, lon)) return { ok: false, reason: "OUT OF COVERAGE · US ONLY" };
+        if (!isInFaaCoverage(lat, lon)) {
+          return { ok: false, code: "us-only", reason: "OUT OF COVERAGE · US ONLY" };
+        }
         if (layerId === "vfr-terminal") {
           if (rangeNm > TAC_MAX_RANGE_NM) {
-            return { ok: false, reason: "ZOOM IN · USE UNDER " + TAC_MAX_RANGE_NM + " NM" };
+            return { ok: false, code: "range", reason: "ZOOM IN · USE UNDER " + TAC_MAX_RANGE_NM + " NM" };
           }
           if (nearestTacDistanceNm(lat, lon) > TAC_PROXIMITY_NM) {
-            return { ok: false, reason: "NO TAC HERE · TRY A MAJOR METRO" };
+            return { ok: false, code: "no-tac", reason: "NO TAC HERE · TRY A MAJOR METRO" };
           }
         }
         return { ok: true };
@@ -1145,6 +1147,14 @@
           if (!btn) continue;
           var avail = chartLayerAvailability(ids[i], state.center.lat, state.center.lon, state.rangeNm);
           btn.classList.toggle("inop", !avail.ok);
+          // data-inop-code drives the sticker's CSS `content` so the label
+          // tells the user *why* it's INOP (US-only / <30 NM / no TAC)
+          // instead of a generic "INOP".
+          if (!avail.ok && avail.code) {
+            btn.setAttribute("data-inop-code", avail.code);
+          } else {
+            btn.removeAttribute("data-inop-code");
+          }
         }
       }
       var FAA_ARCGIS_BASE = "https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/";

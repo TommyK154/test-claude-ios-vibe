@@ -890,7 +890,7 @@
     .map-layer-option.inop::after {
       content: "INOP";
       position: absolute;
-      inset: 8px 22px;
+      inset: 8px 14px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -902,10 +902,10 @@
       color: #f1f1f3;
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 13px;
-      letter-spacing: 0.4em;
-      text-indent: 0.4em;
+      font-size: 10px;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
+      white-space: nowrap;
       border-radius: 3px;
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -920,6 +920,12 @@
       pointer-events: none;
       transform: rotate(-2deg);
     }
+    /* Per-reason sticker text set by updateInopStickers via
+       data-inop-code. Keeps the user informed on why a chart
+       layer is unavailable without a tap on the banner. */
+    .map-layer-option.inop[data-inop-code="us-only"]::after { content: "INOP (US only)"; }
+    .map-layer-option.inop[data-inop-code="range"]::after   { content: "INOP (<30 NM only)"; }
+    .map-layer-option.inop[data-inop-code="no-tac"]::after  { content: "INOP (no TAC)"; }
     /* Three distinct slants so the stickers read as hand-applied, not
        machine-stamped. All kept within ±4°. IFR Low : IFR High
        magnitudes sit at ~golden ratio (4 : 2.5 ≈ 1.6 : 1) in opposite
