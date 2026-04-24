@@ -61,6 +61,13 @@ to restart. Rules to prevent it:
 8. **Break long outputs.** If writing a file >200 lines, consider
    splitting into two `Write`/`Edit` calls with a one-line status
    between them.
+9. **Plan-mode specifically:** parallel `Explore` agents + a long
+   silent post-agent analysis + one big `Write` for the plan file is
+   a reliable way to stall. Build the plan incrementally — seed a
+   skeleton first (one small `Write`), then fill each section with
+   separate `Edit` calls with a one-sentence status between each.
+   If you already have findings from earlier Explore agents, cite
+   them inline; don't re-spawn agents "to be thorough."
 
 These rules are also in the private CLAUDE.md — this copy exists so
 a fresh session sees them immediately.
@@ -77,28 +84,54 @@ a fresh session sees them immediately.
 ## 5. Current state
 
 ### Main
-`main` is at PR #31 merged — FAA ArcGIS charts live. Four chart
-layers wired (Satellite, VFR Sectional, IFR Low, IFR High) with a
-coverage-gated INOP sticker + user-friendly diagnostic banner.
+`main` is at PR #35 merged (commit `e8ac711`). Features through this
+point: FAA ArcGIS four-chart picker (Satellite, VFR Sectional, VFR
+Terminal, IFR Low, IFR High) with coverage + range + TAC-proximity
+gates, pennant-handle dual-thumb alt filter, chevron-BAND quick
+filter (soon to be renamed ALT BAND in PR #36), pause-polling on
+tab-hide for selected-plane + military-registry timers,
+`touch-action: pan-x pan-y` on body blocking iOS Safari page-level
+pinch-zoom.
 
 ### Open PRs
-- **PR #32** (`fix/vfr-terminal-layer`) — adds VFR Terminal as a
-  4th FAA chart layer, plus a range/TAC-proximity availability gate.
-  Three commits: initial swap, `minZoom: 10` fix, availability gate.
-  Waiting on user to test at SFO (drag range slider across 30 NM to
-  confirm INOP flips live) before merging.
+- **PR #36** (`fix/ui-polish-items-3-6-7a`) — "UI polish". Five
+  commits:
+  1. `01ebe7c` alt-slider pennant mid-point centering (later
+     superseded).
+  2. `54b74b8` INOP sticker per-reason labels (`INOP (US only)`,
+     `INOP (<30 NM only)`, `INOP (no TAC)`).
+  3. `3ea90d2` revert slider centering → apex-on-track + add
+     `margin-top: 8px` on `.alt-range-row` for visual separation
+     from the BAND chip row above.
+  4. `c2ff569` rename BAND chip-row label → ALT BAND.
+  5. `2408457` tighten INOP rotations to ±3° max with golden-ratio
+     magnitude sequence (−3° / +1.85° / −1.15° / +0.7°, signs
+     alternating).
+  Waiting on user's merge.
+- **`docs/handoff-session-wrap`** (this branch) — HANDOFF.md
+  wrap-up for session handoff. Open alongside PR #36.
 
-### Branches
-- Default branch on GitHub: `claude/habit-tracker-app-bs1bz` (legacy;
-  user will swap to `main` via GitHub Settings later — blocks
-  deletion of the branch itself). Not urgent; all PRs base against
-  `main` correctly.
-- Branch protection on `main`: restrict deletion + block force-push
-  (enabled this session).
+### Stale / orphan branches
+- `claude/review-handoff-principles-a3YKd` — pushed early in the
+  session with a README + HANDOFF sync commit, never opened as a
+  PR. Content is now stale (this HANDOFF update supersedes). Safe
+  to delete remotely when convenient.
+- `feat/backlog-combo-6-4-1-5` — local copy of the merged PR #34
+  branch. Safe to `git branch -D` locally.
+- `fix/route-cache-and-pause-on-hide` — local copy of the merged
+  PR #35 branch. Safe to delete locally.
+
+### Active planning artifact
+`/root/.claude/plans/inherited-leaping-candy.md` holds the detailed
+roadmap for the seven items the user raised on 2026-04-23. That
+file lives in Claude's workspace and will *not* survive a session
+switch. The canonical backlog copy is §7 below — keep them in
+sync when you revise either.
 
 ### Deferred admin (user will do from mobile)
-- Swap default branch → `main`.
-- Delete `claude/habit-tracker-app-bs1bz`.
+- Swap default branch → `main` (currently `claude/habit-tracker-app-bs1bz`
+  per legacy). Blocks deletion of the legacy branch itself.
+- Delete `claude/habit-tracker-app-bs1bz` after the swap.
 
 ## 6. Key technical patterns
 
@@ -165,37 +198,78 @@ in the tap-to-copy diagnostic payload — never in the banner/label
 text the user sees by default. Audit pattern: see PR #30's
 "visitor-friendly error/warning strings" commit.
 
-## 7. Backlog — candidates for next PR (user picks)
+## 7. Backlog — next-PR candidates
 
-Tracked in the plan file at `/root/.claude/plans/reflective-petting-newt.md`
-(the plan file may not be present in a fresh session — the canonical
-list is this one):
+Current roadmap (post-PR-35 session). Ordered by leverage/risk; each
+is scoped as its own PR. Detailed scope for each lives in the plan
+file `/root/.claude/plans/inherited-leaping-candy.md` while it
+persists; when it's gone, this list is the canonical memory.
 
-1. **Chevron-based altitude quick-filter.** Tap chevron-count icon
-   markers (0–4 chev) to filter planes in that altitude band.
-   Supplements the existing dual-thumb alt slider. Tapping a chevron
-   animates slider thumbs to the band edges. Reuse
-   `altitudeChevronCount()`, `renderAltRangeRow()`,
-   `updateAltRangeUi()`, `wireAltRangeSlider()`.
-2. **README sync.** Fix stale `⚠` → `EMERG` at `README.md:68`; audit
-   feature descriptions against current behavior; update Future Work.
-3. **Alt filter vertical centering.** Slider line + dual-handle
-   pennants don't share a vertical center in the ALT row. Pure CSS.
-4. **Full-page refresh zoom reset.** iOS Safari sometimes retains
-   a pinch-zoomed perspective across reload. Fix via viewport meta
-   or boot-time `document.documentElement.style.zoom = 1`.
-5. **Radar zoom slider redesign.** Reimagine `#rangeSlider` (log
-   5–500 NM) inspired by aircraft instruments (steam or digital).
-   More compact, better granular control.
-6. **Delete MARKER HIDDEN banner.** User reports it doesn't work
-   correctly. Remove `recordSelectedMiss()`, `renderMissStrip()`,
-   `state.selectedMissLog`, all call sites.
+### Closed / in-flight
+- ✅ **Chevron BAND quick-filter** — shipped in PR #34.
+- ✅ **Viewport zoom reset** — shipped in PR #34, strengthened with
+  body `touch-action: pan-x pan-y` in a follow-up.
+- ✅ **MARKER HIDDEN removal** — shipped in PR #34.
+- ✅ **Range slider redesign (first attempt)** — digital ± steppers
+  shipped in PR #34 then reverted; native `<input type="range">`
+  restored. Future redesign still open but **no chosen direction**.
+- ✅ **Pause polling on tab hide** — shipped in PR #35.
+- ✅ **Route cache keyed on callsign+hex** — shipped in PR #35 then
+  reverted after neither observed failure case mapped to that
+  mechanism. See CLAUDE.md §Known Issues for the current multi-
+  mechanism framing and the geography cross-check as the named next
+  step.
+- 🟡 **UI polish (items 3, 6)** — PR #36 open. Alt-slider pennant
+  apex-on-track + row breathing room, INOP sticker per-reason
+  labels with ±3° golden-ratio rotations, BAND→ALT BAND rename.
 
-Plus long-standing items from `README.md` "Future Work" and
-`CLAUDE.md` "Known Issues": loiter detection, day/night terminator,
-track-divergence alerts, callsign-switch detection, anchor-drift,
-momentum-on-pan, route cache key (QXE2316 cross-flight bug),
-OpenSky cross-flight waypoint filter.
+### Pending / planned
+- 🔴 **PR B — Pinch-deselect bug.** Root cause isolated. When a
+  two-finger pinch ends by one finger lifting, `setupRadarDrag`
+  passes `null` as downTarget into `enterPan` (`app.js:3463` and
+  `app.js:3413`), losing the remaining pointer's interactive-tap
+  flag. A no-drag release then trips `maybeDeselectOnBackgroundTap`
+  and deselects the plane. Fix: preserve each pointer's
+  `downTargetInteractive` on `enterPinch`, pass the remaining one
+  through on the handoff. ~15 lines JS + 1 new gesture invariant
+  in CLAUDE.md.
+- 🔴 **PR C — Route geography cross-check.** Named next step in
+  CLAUDE.md §Known Issues. At render time, if both `route.origin`
+  and `route.destination` are > ~1000 NM from the plane's current
+  position, suppress the route line + card block. Mechanism-agnostic
+  — catches both observed cases regardless of root cause. ~25 lines
+  + one helper.
+- 🔴 **PR D — DR diagnostic instrumentation.** User reports the
+  selected plane sometimes jumps several miles ahead between
+  refreshes. Hypothesis: 120-s dead-reckoning cap + high groundspeed
+  extrapolates before the next fetch lands, or speed/heading update
+  without `baseAt` reset during the 6-s selected-poll lock window.
+  Ring-buffer log + tap-to-copy payload mirroring the existing tile
+  diag. Instrumentation-only, no behavior change. Follow-up **PR E**
+  for the targeted fix.
+- 🔴 **PR F — Pending-track loading stub.** Subtle dashed line off
+  the selected plane's tail while `state.historicalFetched[hex]` is
+  false. Fades out when the real trail arrives. ~30 lines JS + 15
+  CSS.
+- 🔴 **PR G — Day/night terminator.** Gradient-filled nighttime
+  polygon over the radar, subsolar-point math recomputed every 60 s.
+  Pure math, no new deps. Largest feature PR; ship last. Visual
+  reference: ForeFlight / SkyDemon / Windy.com use opacity-gradient
+  with no hard edge.
+
+### Out of scope until a use case forces it
+- **Multi-band altitude filter** — contiguous-only / bitset-swap /
+  hybrid options all reshape the existing single-range predicate.
+  See CLAUDE.md §Known Issues. Deferred.
+- **Range slider redesign (new direction)** — needs a design pick
+  before code.
+- **Long-standing items from README Future Work + CLAUDE.md Known
+  Issues**: loiter detection, track-divergence alerts, callsign-
+  switch detection, squawk-change history, "dark" reappearance,
+  anchor-drift, distress push, lead-line contrast, weather overlay,
+  momentum-on-pan, double-tap zoom, authenticated OpenSky, further
+  JS subdivision, CSP meta tag, OpenSky cross-flight waypoint
+  filter. Pick any time.
 
 ## 8. Recipe: open a PR
 
@@ -244,8 +318,32 @@ Six PRs in ~24 hours, in order:
 - PR #31: Swap to FAA ArcGIS charts. Three chart services live.
   Coverage-gated INOP + `OUT OF COVERAGE · US ONLY` banner. Clamped
   sticker rotations to ±4° with golden-ratio IFR pair.
-- PR #32 (open): VFR Terminal as 4th chart layer. Range +
-  TAC-proximity availability gate. Per-layer availability function.
+- PR #32: VFR Terminal as 4th chart layer. Range + TAC-proximity
+  availability gate. Per-layer availability function.
+- PR #33: Added this HANDOFF.md for session-to-session context transfer.
+- PR #34: "Backlog combo" — four items, one PR. Shipped: MARKER
+  HIDDEN removal, chevron BAND quick-filter (tap → slider tween),
+  viewport zoom lock (initially via meta, later strengthened via
+  body `touch-action: pan-x pan-y`). Attempted and reverted in-PR:
+  native range slider replaced with digital ± stepper control —
+  user rejected the coarse-control trade. Native slider restored
+  before merge.
+- PR #35: Route-cache key reconsidered + pause polling on tab hide.
+  Originally shipped `callsign|hex` compound cache key; reverted in
+  the same PR after review surfaced that neither documented failure
+  case (QXE2316, UAL2192) mapped to the cross-aircraft-collision
+  mechanism the key was defending against. Rewrote CLAUDE.md §Known
+  Issues to frame the route bug as multiple un-diagnosed mechanisms;
+  named the geography cross-check as the strongest next step. Net
+  ship: pause-on-hide extension covering `state.selectedPollTimer`
+  and `state.militaryRefreshTimer` alongside the pre-existing
+  refresh + countdown timers.
+- PR #36 (open): UI polish — alt-slider pennant apex-on-track with
+  new `.alt-range-row` top margin for visual separation from the
+  ALT BAND row above; INOP sticker per-reason labels reading
+  "INOP (US only) / (<30 NM only) / (no TAC)"; sticker rotations
+  tightened to ±3° with a golden-ratio magnitude sequence;
+  BAND → ALT BAND rename.
 
 Commits land on focused feature branches. Never commit to `main`
 directly.
