@@ -1963,7 +1963,7 @@
           { k: "4",   label: "",    icon: altBandIconSvg(4), aria: "Above 40,000 ft" }
         ];
         return '<div class="chip-row alt-band-row" data-kind="plane-alt-band">' +
-          '<span class="chip-row-label">BAND</span>' +
+          '<span class="chip-row-label">ALT BAND</span>' +
           chips.map(function (c) {
             var on = active === c.k ? " active" : "";
             return '<button class="chip alt-band-chip' + on + '" data-k="' + c.k + '" aria-label="' + c.aria + '">' +
