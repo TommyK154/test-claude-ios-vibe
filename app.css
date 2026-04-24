@@ -1367,21 +1367,23 @@
       width: 16px;
       height: 18px;
       background: var(--accent);
-      /* Home-plate shape with softened corners: quadratic curves at the
-         top corners, the shoulders where it starts narrowing, and the
-         apex tip. Coordinates in CSS px matching the 16x18 thumb body.
-         Apex (bottom point) lands on the track center line (steam-gauge
-         altimeter vibe). */
+      /* Home-plate pennant silhouette: full-width rectangle with softened
+         top corners, narrowing shoulders, and a pointed apex at the bottom.
+         Coordinates in CSS px inside the 16x18 thumb body. */
       clip-path: path('M 3 0 L 13 0 Q 16 0 16 3 L 16 10 Q 16 11.2 15 11.8 L 9 17.4 Q 8 18 7 17.4 L 1 11.8 Q 0 11.2 0 10 L 0 3 Q 0 0 3 0 Z');
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
       border: none;
       border-radius: 0;
       cursor: pointer;
       pointer-events: auto;
-      /* margin-top pushes the thumb so its bottom apex lands at the
-         runnable-track center. Input height 32, track 14-18, track center
-         16; 18 px thumb placed with top at -2 = margin 14 - (-2) = -16. */
-      margin-top: -16px;
+      /* Vertical placement: margin-top lands the thumb's geometric midpoint
+         (y=9 of the 18-px body) on the runnable-track center line. With the
+         4 px runnable track at input-y=14..18 the center is at input-y=16,
+         so margin-top = -9 puts thumb-top at input-y=7 and thumb-midpoint
+         at input-y=16. This matches Firefox's default thumb centering and
+         gives the pennant's visual weight on the track rather than dangling
+         the apex on the line with the body floating above. */
+      margin-top: -9px;
     }
     .alt-range-input::-moz-range-thumb {
       width: 16px;
