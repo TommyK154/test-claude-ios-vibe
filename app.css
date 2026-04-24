@@ -890,7 +890,7 @@
     .map-layer-option.inop::after {
       content: "INOP";
       position: absolute;
-      inset: 8px 22px;
+      inset: 8px 14px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -902,10 +902,10 @@
       color: #f1f1f3;
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 13px;
-      letter-spacing: 0.4em;
-      text-indent: 0.4em;
+      font-size: 10px;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
+      white-space: nowrap;
       border-radius: 3px;
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.1),
@@ -920,14 +920,22 @@
       pointer-events: none;
       transform: rotate(-2deg);
     }
-    /* Three distinct slants so the stickers read as hand-applied, not
-       machine-stamped. All kept within ±4°. IFR Low : IFR High
-       magnitudes sit at ~golden ratio (4 : 2.5 ≈ 1.6 : 1) in opposite
-       directions — pleasing asymmetry without looking deliberate. */
+    /* Per-reason sticker text set by updateInopStickers via
+       data-inop-code. Keeps the user informed on why a chart
+       layer is unavailable without a tap on the banner. */
+    .map-layer-option.inop[data-inop-code="us-only"]::after { content: "INOP (US only)"; }
+    .map-layer-option.inop[data-inop-code="range"]::after   { content: "INOP (<30 NM only)"; }
+    .map-layer-option.inop[data-inop-code="no-tac"]::after  { content: "INOP (no TAC)"; }
+    /* Four distinct slants so the stickers read as hand-applied in the
+       stacked map-layer dropdown. Magnitudes form a descending golden-
+       ratio sequence (each ~1.618× smaller than the previous) bounded
+       at ±3°: 3° → 1.85° → 1.15° → 0.7°. Signs alternate so adjacent
+       stickers tilt opposite directions. The biggest tilt sits on the
+       first (most-prominent) sticker and the smallest on the last. */
     .map-layer-option.inop[data-map-layer="sectional"]::after     { transform: rotate(-3deg); }
-    .map-layer-option.inop[data-map-layer="vfr-terminal"]::after  { transform: rotate(1.5deg); }
-    .map-layer-option.inop[data-map-layer="ifr-low"]::after       { transform: rotate(4deg); }
-    .map-layer-option.inop[data-map-layer="ifr-high"]::after      { transform: rotate(-2.5deg); }
+    .map-layer-option.inop[data-map-layer="vfr-terminal"]::after  { transform: rotate(1.85deg); }
+    .map-layer-option.inop[data-map-layer="ifr-low"]::after       { transform: rotate(-1.15deg); }
+    .map-layer-option.inop[data-map-layer="ifr-high"]::after      { transform: rotate(0.7deg); }
 
     /* LEAD pill — collapses to label+value, expands to 3-option segmented
        on tap. Width transitions + options stagger-fade in for a tactile feel. */
@@ -1280,7 +1288,9 @@
        positioned between the thumbs give the dual-range visual. Input
        bodies are pointer-events:none so only the thumbs respond to touch
        (prevents the full-width invisible track from eating radar taps). */
-    .alt-range-row { gap: 8px; }
+    /* margin-top gives the slider assembly visual separation from the
+       ALT BAND chips immediately above — reads as a distinct group. */
+    .alt-range-row { gap: 8px; margin-top: 8px; }
     .alt-range-row .chip-row-label.alt-label-active,
     .alt-range-row.active .chip-row-label { color: var(--accent); }
     /* Chevron band quick-filter — a chip row of 5 tappable chevron icons
@@ -1367,20 +1377,21 @@
       width: 16px;
       height: 18px;
       background: var(--accent);
-      /* Home-plate shape with softened corners: quadratic curves at the
-         top corners, the shoulders where it starts narrowing, and the
-         apex tip. Coordinates in CSS px matching the 16x18 thumb body.
-         Apex (bottom point) lands on the track center line (steam-gauge
-         altimeter vibe). */
+      /* Home-plate pennant silhouette: full-width rectangle with softened
+         top corners, narrowing shoulders, and a pointed apex at the bottom.
+         Coordinates in CSS px inside the 16x18 thumb body. */
       clip-path: path('M 3 0 L 13 0 Q 16 0 16 3 L 16 10 Q 16 11.2 15 11.8 L 9 17.4 Q 8 18 7 17.4 L 1 11.8 Q 0 11.2 0 10 L 0 3 Q 0 0 3 0 Z');
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
       border: none;
       border-radius: 0;
       cursor: pointer;
       pointer-events: auto;
-      /* margin-top pushes the thumb so its bottom apex lands at the
-         runnable-track center. Input height 32, track 14-18, track center
-         16; 18 px thumb placed with top at -2 = margin 14 - (-2) = -16. */
+      /* Vertical placement: margin-top lands the thumb's bottom apex
+         (y=18 of the 18-px body) on the runnable-track center line so
+         the pennant's pointed tip touches the track and the body sits
+         cleanly above — steam-gauge altimeter-bug vibe. Additional
+         row-level spacing (margin-top on .alt-range-row below) gives
+         the whole assembly breathing room from the BAND chips above. */
       margin-top: -16px;
     }
     .alt-range-input::-moz-range-thumb {
