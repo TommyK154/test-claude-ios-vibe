@@ -7700,6 +7700,11 @@ window.__airports = [
 ["","ZKSC","Sunchon Air Base","Sunchon","North Korea",39.4157,125.895],
 ["","ZLAN","Lanzhou City Airport","Lanzhou","China",36.03333,103.86667],
 ["","ZLIC","Yinchuan Airport","Yinchuan","China",38.4819,106.009],
-["","ZYYY","Shenyang Dongta Airport","Shenyang","China",41.7844,123.496]
+["","ZYYY","Shenyang Dongta Airport","Shenyang","China",41.7844,123.496],
+// Manually added — small US GA fields absent from OpenFlights' bundled
+// dataset. Live-lookup via aviationapi.com used to fill these in but
+// the upstream is currently unreachable (DNS failure on api.aviationapi.com).
+// Append more here as users surface them.
+["SZP","KSZP","Santa Paula Airport","Santa Paula","United States",34.3447,-119.0608]
 ];
 try { window.dispatchEvent(new Event("airports-loaded")); } catch (e) {}
