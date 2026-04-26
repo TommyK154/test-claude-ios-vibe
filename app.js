@@ -2974,6 +2974,22 @@
       // free FAA NASR mirror at aviationapi.com, then CORS proxies on failure.
       // Result cached on state.airportLive keyed by uppercased ICAO.
       // onResolve fires with the apt object (or null) so the caller can re-render.
+      // Strict numeric parser. Unlike parseFloat, rejects strings that
+      // start with digits but contain DMS punctuation (e.g.
+      // "34-20-51.1000N" → NaN, not 34). Used in fetchAirportLive so
+      // the parseDMS fallback actually runs when aviationapi returns a
+      // DMS string under a *_deg field — without this, the W hemisphere
+      // sign would be silently dropped (cf. KSZP at "34, 119" instead
+      // of (34.34, -119.06)).
+      function strictNum(v) {
+        if (typeof v === "number") return isFinite(v) ? v : NaN;
+        if (typeof v !== "string") return NaN;
+        var s = v.trim();
+        if (!s) return NaN;
+        var n = Number(s);
+        return isFinite(n) ? n : NaN;
+      }
+
       function fetchAirportLive(icao, onResolve) {
         icao = (icao || "").trim().toUpperCase();
         if (!icao) return;
@@ -2987,11 +3003,19 @@
           var arr = j && j[icao];
           var row = arr && arr.length ? arr[0] : null;
           if (!row) { state.airportLive[icao] = null; onResolve(null); return; }
-          var lat = parseFloat(row.latitude_deg != null ? row.latitude_deg : row.latitude);
-          var lon = parseFloat(row.longitude_deg != null ? row.longitude_deg : row.longitude);
+          var lat = strictNum(row.latitude_deg != null ? row.latitude_deg : row.latitude);
+          var lon = strictNum(row.longitude_deg != null ? row.longitude_deg : row.longitude);
           if (!isFinite(lat)) lat = parseDMS(row.latitude);
           if (!isFinite(lon)) lon = parseDMS(row.longitude);
-          if (!isFinite(lat) || !isFinite(lon)) { state.airportLive[icao] = null; onResolve(null); return; }
+          // Range + null-island guard catches malformed responses,
+          // accidental hemisphere drops, and the "0,0" sentinel.
+          if (!isFinite(lat) || !isFinite(lon)
+              || Math.abs(lat) > 90 || Math.abs(lon) > 180
+              || (lat === 0 && lon === 0)) {
+            state.airportLive[icao] = null;
+            onResolve(null);
+            return;
+          }
           var apt = {
             iata: row.faa_ident && row.faa_ident !== row.icao_id ? row.faa_ident : "",
             icao: row.icao_id || icao,
