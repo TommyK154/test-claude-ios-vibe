@@ -166,6 +166,46 @@ Gates:
 - `TAC_CITIES` array holds ~35 FAA TAC metros (hardcoded from 2026
   FAA publication roster).
 
+### Airports dataset regeneration (PR #39)
+
+`airports.js` is generated from the OurAirports public-domain dataset
+(license: Unlicense). The generator lives at `tools/build-airports.js`
+and is run locally; the output is committed. It is *not* invoked at
+deploy time — GitHub Pages serves the committed file as-is.
+
+Refresh recipe (run on a machine with `node` and outbound network):
+
+1. `mkdir -p /tmp/ourairports`
+2. `curl -fLo /tmp/ourairports/airports.csv https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/airports.csv`
+3. `curl -fLo /tmp/ourairports/countries.csv https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/countries.csv`
+4. `node tools/build-airports.js`
+5. `node --check airports.js` (sanity)
+6. `git diff --stat airports.js` — review delta is reasonable.
+7. Commit + PR.
+
+In a sandbox without arbitrary outbound network: only
+`raw.githubusercontent.com` was confirmed reachable in 2026-04-26 —
+`davidmegginson.github.io` returned `host_not_allowed`. Use the raw
+GitHub URL form above; don't rely on the `*.github.io` Pages mirror
+of the same dataset.
+
+The script:
+- filters out `type === "closed"` (~13 K decommissioned fields),
+- falls back to OurAirports' `ident` field when `icao_code` is empty
+  (recovers idents like `KCMA` / `KO22` / `KSZP` whose icao_code is
+  blank but whose ident is what users actually type),
+- rounds lat/lon to 4 decimals (~10 m precision),
+- sorts by importance (`large_airport` → `medium_airport` →
+  `small_airport` → `seaplane_base` → `heliport` → `balloonport`),
+  then by ICAO/IATA. Importance-first ordering surfaces commercial
+  airports ahead of small GA fields for prefix / substring searches.
+
+Output size envelope: ~5–6 MB raw, ~1.7 MB gzipped, ~72 K rows.
+Loaded async via the existing `<script src="airports.js">` tag.
+The lazy `buildAirportIndex()` in `app.js` builds Maps + first-letter
+buckets on first search-input focus (~20 ms); search-as-you-type is
+sub-frame after that.
+
 ### Diagnostic banner + copy (PR #30)
 
 Red banner at top of radar when tiles fail or a chart is
@@ -219,9 +259,15 @@ persists; when it's gone, this list is the canonical memory.
   mechanism. See CLAUDE.md §Known Issues for the current multi-
   mechanism framing and the geography cross-check as the named next
   step.
-- 🟡 **UI polish (items 3, 6)** — PR #36 open. Alt-slider pennant
-  apex-on-track + row breathing room, INOP sticker per-reason
-  labels with ±3° golden-ratio rotations, BAND→ALT BAND rename.
+- ✅ **UI polish (items 3, 6)** — shipped in PR #36.
+- ✅ **KSZP wrong-location** — strict-numeric guard shipped in PR #38;
+  KSZP also bundled directly into airports.js as an interim hand-add.
+  Now superseded by PR #39 (full OurAirports bundle).
+- 🟡 **OurAirports global airport bundle (PR #39)** — replaces
+  `airports.js` with ~72 K airports from OurAirports, removes the dead
+  `fetchAirportLive`/aviationapi.com path entirely, adds a lazy
+  `buildAirportIndex()` so search-as-you-type stays sub-frame at this
+  scale. See §6 "Airports dataset regeneration" for refresh recipe.
 
 ### Pending / planned
 - 🔴 **PR B — Pinch-deselect bug.** Root cause isolated. When a
