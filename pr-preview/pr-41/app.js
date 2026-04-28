@@ -345,14 +345,7 @@
         // Base map tile source. Satellite default; VFR/IFR charts are
         // opt-in via the settings-panel picker. US-only for non-satellite
         // layers (ChartBundle serves FAA public-domain charts).
-        mapLayer: "satellite",    // "satellite" | "sectional" | "vfr-terminal" | "ifr-low" | "ifr-high"
-        // Day/night overlay toggle. Off by default — turning it on lazily
-        // loads nightlights.js (~1.7 MB) the first time. Persisted to
-        // localStorage as "night.enabled" ("1" / "0").
-        nightEnabled: false,
-        nightLightsLoaded: false,
-        nightLightsPromise: null,
-        nightTimer: null
+        mapLayer: "satellite"     // "satellite" | "sectional" | "vfr-terminal" | "ifr-low" | "ifr-high"
       };
       try { state.aisKey = localStorage.getItem("aisstream.key") || null; } catch (e) {}
       try {
@@ -372,7 +365,6 @@
             storedLayer === "ifr-low" || storedLayer === "ifr-high") {
           state.mapLayer = storedLayer;
         }
-        state.nightEnabled = localStorage.getItem("night.enabled") === "1";
       } catch (e) {}
       state.military = {};  // hex -> true for military aircraft
 
@@ -1407,7 +1399,6 @@
         };
         if (tileLoadState.unavailable) {
           updateTileStatus();
-          renderNight();
           return;
         }
         // Chart layers have a publisher-defined LOD range (FAA's ArcGIS
@@ -1502,10 +1493,6 @@
             }
           }
         }
-        // Night overlay rides on every tile redraw — same triggers (center,
-        // range, mapLayer change). Cheap when disabled (innerHTML clear and
-        // early-return inside renderNight).
-        renderNight();
       }
 
       // Project lat/lon -> radar coords (viewBox is -100..100 for 0..rangeNm)
@@ -1523,229 +1510,6 @@
         var dxNm = dLon * 60 * Math.cos(cLatRad);
         var scale = 100 / state.rangeNm;
         return { x: dxNm * scale, y: -dyNm * scale };
-      }
-
-      // Inverse of project(). Used by the night layer's per-cell solar
-      // elevation lookup — given an SVG (x, y), recover (lat, lon).
-      function unproject(x, y) {
-        var cLatRad = state.center.lat * Math.PI / 180;
-        var scale = 100 / state.rangeNm;
-        var dyNm = -y / scale;
-        var dxNm = x / scale;
-        var dLat = dyNm / 60;
-        var dLon = dxNm / (60 * Math.max(0.01, Math.cos(cLatRad)));
-        return { lat: state.center.lat + dLat, lon: state.center.lon + dLon };
-      }
-
-      // ==================== DAY/NIGHT OVERLAY ====================
-
-      // Subsolar point: lat/lon of the spot directly under the sun at `date`.
-      // Approximation good to ~0.1°. Sources: NOAA solar calculator equations.
-      function subsolarPoint(date) {
-        var d = date || new Date();
-        var start = Date.UTC(d.getUTCFullYear(), 0, 0);
-        var dayOfYear = (d.getTime() - start) / 86400000;
-        var fracHr = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
-        var gamma = (2 * Math.PI / 365) * (dayOfYear - 1 + (fracHr - 12) / 24);
-        var decl =
-          0.006918
-          - 0.399912 * Math.cos(gamma)     + 0.070257 * Math.sin(gamma)
-          - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
-          - 0.002697 * Math.cos(3 * gamma) + 0.00148  * Math.sin(3 * gamma);
-        var eqTimeMin = 229.18 * (
-          0.000075
-          + 0.001868 * Math.cos(gamma)     - 0.032077 * Math.sin(gamma)
-          - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma)
-        );
-        var solarTimeMin = fracHr * 60 + eqTimeMin;
-        var lon = (720 - solarTimeMin) / 4;
-        while (lon > 180) lon -= 360;
-        while (lon < -180) lon += 360;
-        return { lat: decl * 180 / Math.PI, lon: lon };
-      }
-
-      // Solar elevation in degrees (positive = above horizon, negative = below).
-      function solarElevationDeg(lat, lon, sub) {
-        var lat1 = lat * Math.PI / 180, lat2 = sub.lat * Math.PI / 180;
-        var dlon = (lon - sub.lon) * Math.PI / 180;
-        var cosZ = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(dlon);
-        if (cosZ > 1) cosZ = 1;
-        else if (cosZ < -1) cosZ = -1;
-        return Math.asin(cosZ) * 180 / Math.PI;
-      }
-
-      // Linear ramp from "sun at horizon" (0) to "deep astronomical night"
-      // (-18°) producing the per-cell darkening opacity. Caps at 0.55 so the
-      // base imagery is never completely lost on the night side.
-      function nightOpacityForElevation(elev) {
-        if (elev > 0) return 0;
-        if (elev < -18) return 0.55;
-        return 0.55 * (-elev) / 18;
-      }
-
-      // Compute the visible map bbox (covers the full SVG square -110..110,
-      // including the corners under the vignette). Returns null if the
-      // viewport spans > 180° of longitude — at that range the bbox-cull
-      // optimization can't apply and we render every polygon.
-      function nightMapBbox() {
-        var corners = [
-          unproject(-110, -110),
-          unproject( 110, -110),
-          unproject(-110,  110),
-          unproject( 110,  110)
-        ];
-        var minLat = corners[0].lat, maxLat = corners[0].lat;
-        var minLon = corners[0].lon, maxLon = corners[0].lon;
-        for (var i = 1; i < 4; i++) {
-          if (corners[i].lat < minLat) minLat = corners[i].lat;
-          if (corners[i].lat > maxLat) maxLat = corners[i].lat;
-          if (corners[i].lon < minLon) minLon = corners[i].lon;
-          if (corners[i].lon > maxLon) maxLon = corners[i].lon;
-        }
-        if (maxLon - minLon > 180) return null;
-        return { minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon };
-      }
-
-      function renderNight() {
-        var layer = document.getElementById("nightLayer");
-        if (!layer) return;
-        layer.innerHTML = "";
-        if (!state.nightEnabled) return;
-
-        var svgns = "http://www.w3.org/2000/svg";
-        var sub = subsolarPoint();
-
-        // ------- Pass 1: shadow grid -------
-        // 32×32 cells across the SVG square. Each cell looks up the solar
-        // elevation at its center via unproject() and emits a translucent
-        // dark rect. SVG's anti-aliased adjacent-rect rendering blends the
-        // discrete cells into a smooth-looking gradient at typical zoom.
-        // Skipping cells with opacity < 0.04 keeps the day-side completely
-        // unaffected and avoids unnecessary DOM nodes.
-        var GRID = 32;
-        var CELL = 220 / GRID;
-        for (var iy = 0; iy < GRID; iy++) {
-          for (var ix = 0; ix < GRID; ix++) {
-            var cx = -110 + (ix + 0.5) * CELL;
-            var cy = -110 + (iy + 0.5) * CELL;
-            var ll = unproject(cx, cy);
-            if (ll.lat < -90 || ll.lat > 90) continue;
-            var elev = solarElevationDeg(ll.lat, ll.lon, sub);
-            var op = nightOpacityForElevation(elev);
-            if (op < 0.04) continue;
-            var rect = document.createElementNS(svgns, "rect");
-            // Tiny overlap (0.4 SVG units) prevents hairline seams between
-            // adjacent cells on fractional-pixel rendering, similar to the
-            // tile-overlap trick in renderTiles().
-            rect.setAttribute("x", (cx - CELL / 2 - 0.2).toFixed(2));
-            rect.setAttribute("y", (cy - CELL / 2 - 0.2).toFixed(2));
-            rect.setAttribute("width", (CELL + 0.4).toFixed(2));
-            rect.setAttribute("height", (CELL + 0.4).toFixed(2));
-            rect.setAttribute("fill", "rgba(7,12,21," + op.toFixed(3) + ")");
-            layer.appendChild(rect);
-          }
-        }
-
-        // ------- Pass 2: city footprints + city lights -------
-        var nl = (typeof window !== "undefined" && window.NIGHT_LIGHTS) || null;
-        if (!nl) return;
-        var bbox = nightMapBbox();
-
-        function inBbox(lon, lat) {
-          if (!bbox) return true;
-          if (lat < bbox.minLat || lat > bbox.maxLat) return false;
-          if (lon < bbox.minLon || lon > bbox.maxLon) return false;
-          return true;
-        }
-
-        // Smooth fade-in for city features as the terminator passes overhead:
-        // 0 above sunset elevation -3°, full at -12° (nautical twilight done).
-        // Avoids the visual jar of cities popping on the instant the sun sets.
-        function nightFeatureAlpha(elevDeg) {
-          if (elevDeg > -3) return 0;
-          if (elevDeg < -12) return 1;
-          return (-3 - elevDeg) / 9;
-        }
-
-        // Urban polygons — soft warm tint over the night-side built-up areas.
-        var urban = nl.urban;
-        for (var u = 0; u < urban.length; u++) {
-          var poly = urban[u];
-          var b = poly.b;  // [minLon, minLat, maxLon, maxLat]
-          if (bbox) {
-            if (b[2] < bbox.minLon || b[0] > bbox.maxLon) continue;
-            if (b[3] < bbox.minLat || b[1] > bbox.maxLat) continue;
-          }
-          var cLat = (b[1] + b[3]) / 2;
-          var cLon = (b[0] + b[2]) / 2;
-          var alphaU = nightFeatureAlpha(solarElevationDeg(cLat, cLon, sub));
-          if (alphaU <= 0) continue;
-          var ring = poly.r;
-          var d = "";
-          for (var j = 0; j < ring.length; j++) {
-            var pt = project({ lat: ring[j][1], lon: ring[j][0] });
-            if (!isFinite(pt.x) || !isFinite(pt.y)) { d = ""; break; }
-            d += (j === 0 ? "M" : "L") + pt.x.toFixed(1) + " " + pt.y.toFixed(1);
-          }
-          if (!d) continue;
-          d += "Z";
-          var path = document.createElementNS(svgns, "path");
-          path.setAttribute("d", d);
-          path.setAttribute("fill", "rgba(255, 200, 110, 0.16)");
-          path.setAttribute("stroke", "none");
-          path.setAttribute("opacity", alphaU.toFixed(2));
-          layer.appendChild(path);
-        }
-
-        // City glows. Radius scales with population (log) and inversely with
-        // radar range (so a 5 NM radar shows big glows for nearby cities and
-        // a 500 NM radar shows tiny pinpricks). pop_max stored as thousands.
-        var cities = nl.cities;
-        var rangeFactor = Math.min(2.5, Math.max(0.35, 50 / state.rangeNm));
-        for (var c = 0; c < cities.length; c++) {
-          var ct = cities[c];
-          var clon = ct[0], clat = ct[1], popK = ct[2];
-          if (!inBbox(clon, clat)) continue;
-          var alphaC = nightFeatureAlpha(solarElevationDeg(clat, clon, sub));
-          if (alphaC <= 0) continue;
-          var ptC = project({ lat: clat, lon: clon });
-          if (!isFinite(ptC.x) || !isFinite(ptC.y)) continue;
-          var rUnits = Math.max(1.4, Math.log10(Math.max(50, popK)) * 1.7 * rangeFactor);
-          var circle = document.createElementNS(svgns, "circle");
-          circle.setAttribute("cx", ptC.x.toFixed(1));
-          circle.setAttribute("cy", ptC.y.toFixed(1));
-          circle.setAttribute("r", rUnits.toFixed(1));
-          circle.setAttribute("fill", "url(#cityGlow)");
-          circle.setAttribute("opacity", alphaC.toFixed(2));
-          layer.appendChild(circle);
-        }
-      }
-
-      // Lazy-loads nightlights.js the first time the user enables the night
-      // overlay. Subsequent toggles are free — the data stays in memory until
-      // page reload. Defaulting the toggle off means users who never use this
-      // feature pay 0 bytes for it.
-      function ensureNightLightsLoaded() {
-        if (window.NIGHT_LIGHTS) {
-          state.nightLightsLoaded = true;
-          return Promise.resolve();
-        }
-        if (state.nightLightsPromise) return state.nightLightsPromise;
-        state.nightLightsPromise = new Promise(function (resolve, reject) {
-          var s = document.createElement("script");
-          s.src = "nightlights.js";
-          s.async = true;
-          s.onload = function () {
-            state.nightLightsLoaded = true;
-            resolve();
-          };
-          s.onerror = function () {
-            state.nightLightsPromise = null;
-            reject(new Error("nightlights.js failed to load"));
-          };
-          document.head.appendChild(s);
-        });
-        return state.nightLightsPromise;
       }
 
       // Nearest-airport lookup over the full dataset. Returns { apt, distNm }
@@ -3743,8 +3507,6 @@
         var save = document.getElementById("aisKeySave");
         var clearBtn = document.getElementById("aisKeyClear");
         var statusEl = document.getElementById("aisStatus");
-        var nightToggle = document.getElementById("nightToggle");
-        var nightStatusEl = document.getElementById("nightStatus");
         if (!btn || !panel || !input) return;
         function refreshUi() {
           if (state.aisKey) {
@@ -3759,40 +3521,6 @@
             statusEl.className = "ais-status";
           }
           updateShipsHint();
-        }
-        function setNightStatus(text, cls) {
-          if (!nightStatusEl) return;
-          if (!text) { nightStatusEl.hidden = true; nightStatusEl.textContent = ""; nightStatusEl.className = "setting-mini-status"; return; }
-          nightStatusEl.hidden = false;
-          nightStatusEl.textContent = text;
-          nightStatusEl.className = "setting-mini-status" + (cls ? " " + cls : "");
-        }
-        function syncNightToggleUi() {
-          if (!nightToggle) return;
-          nightToggle.classList.toggle("on", !!state.nightEnabled);
-          nightToggle.setAttribute("aria-checked", state.nightEnabled ? "true" : "false");
-        }
-        if (nightToggle) {
-          syncNightToggleUi();
-          nightToggle.addEventListener("click", function () {
-            state.nightEnabled = !state.nightEnabled;
-            try { localStorage.setItem("night.enabled", state.nightEnabled ? "1" : "0"); } catch (e) {}
-            syncNightToggleUi();
-            if (state.nightEnabled) {
-              if (!window.NIGHT_LIGHTS) setNightStatus("LOADING CITY DATA…");
-              ensureNightLightsLoaded().then(function () {
-                setNightStatus("");
-                renderNight();
-              }).catch(function () {
-                setNightStatus("FAILED TO LOAD CITY DATA · SHADOW ONLY", "warn");
-                renderNight();
-              });
-              renderNight();
-            } else {
-              setNightStatus("");
-              renderNight();
-            }
-          });
         }
         btn.addEventListener("click", function () {
           panel.hidden = !panel.hidden;
@@ -4254,18 +3982,6 @@
       // Refresh military aircraft registry periodically
       refreshMilitary();
       state.militaryRefreshTimer = setInterval(refreshMilitary, 2 * 60 * 1000);
-
-      // Tick the night overlay once a minute. The terminator advances ~0.25°
-      // longitude per minute, which only becomes visible on a static map at
-      // wide ranges, but it also covers the case where the user leaves the
-      // tab open through sunset.
-      state.nightTimer = setInterval(function () { renderNight(); }, 60 * 1000);
-      // If the toggle was on at last reload, kick the lazy load now and
-      // re-render once the data lands. Until it lands, renderNight() still
-      // draws the shadow grid (which doesn't depend on the city dataset).
-      if (state.nightEnabled) {
-        ensureNightLightsLoaded().then(function () { renderNight(); }).catch(function () {});
-      }
 
       // Init
       buildPresets();
