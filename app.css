@@ -547,20 +547,15 @@
     #tileLayer image.ready, #labelLayer image.ready { opacity: 1; }
     #tileLayer image { image-rendering: auto; }
     #labelLayer image { image-rendering: auto; }
-    /* Halo around every projected line (trail, route, lead vector, ship trail).
-       Two tight near-zero-blur drop-shadows compound into a sharp ~1 px dark
-       outline that cuts through busy chart ink (VFR sectional pastels, IFR
-       enroute lat/lon grids). A third wider soft drop-shadow gives separation
-       against mid-tone backgrounds (urban satellite, desert) without making
-       the line look heavy. The dark color matches --radar-bg so on satellite
-       ocean / IFR enroute the halo is invisible. */
+    /* Soft halo glow on the overlay groups. The hard outline is now drawn
+       per-line as a wider dark "casing" stroke under each colored stroke
+       (see drawTrailLine / drawRouteLine / drawVectorLine in app.js); this
+       filter just adds a separation glow on top so the lines lift cleanly
+       off busy backdrops (urban satellite, IFR enroute grids). */
     #trackLayer,
     #routeLayer,
     #vectorLayer {
-      filter:
-        drop-shadow(0 0 0.5px rgba(7, 12, 21, 1))
-        drop-shadow(0 0 0.5px rgba(7, 12, 21, 1))
-        drop-shadow(0 0 2.4px rgba(7, 12, 21, 0.7));
+      filter: drop-shadow(0 0 1.6px rgba(7, 12, 21, 0.55));
     }
     .page-footer {
       margin-top: 18px;
