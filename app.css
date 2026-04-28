@@ -499,7 +499,7 @@
     #trackLayer,
     #routeLayer,
     #vectorLayer {
-      filter: drop-shadow(0 0 1.6px rgba(7, 12, 21, 0.55));
+      filter: drop-shadow(0 0 1.4px rgba(7, 12, 21, 0.4));
     }
     .page-footer {
       margin-top: 18px;

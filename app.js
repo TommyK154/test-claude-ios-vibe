@@ -727,15 +727,17 @@
         routeLayer.innerHTML = "";
         vectorLayer.innerHTML = "";
 
-        // Render a colored line with a wider dark "casing" stroke beneath it
-        // for crisp legibility on busy chart bases (VFR sectional pastels,
-        // IFR enroute grids, dense urban satellite). The casing is a clone of
-        // the line with stroke and stroke-width swapped — same opacity so it
-        // fades with trail gradient and inherits the same dasharray so a
-        // dashed route gets a dashed casing aligned with the colored dashes.
+        // Render a colored line with a slightly wider dark "casing" stroke
+        // beneath it for crisp legibility on busy chart bases (VFR sectional
+        // pastels, IFR enroute grids, dense urban satellite). The casing is
+        // a clone of the line with stroke and stroke-width swapped — same
+        // opacity so it fades with trail gradient and inherits the same
+        // dasharray so a dashed route gets a dashed casing aligned with the
+        // colored dashes. Casing total width ≈ colored width + 0.7 px so
+        // the dark band reads as a thin outline, not a heavy stroke.
         function appendWithCasing(parent, line, casingWidth) {
           var casing = line.cloneNode(false);
-          casing.setAttribute("stroke", "rgba(7,12,21,0.85)");
+          casing.setAttribute("stroke", "rgba(7,12,21,0.7)");
           casing.setAttribute("stroke-width", String(casingWidth));
           parent.appendChild(casing);
           parent.appendChild(line);
@@ -772,7 +774,7 @@
             line.setAttribute("stroke-width", "1.7");
             line.setAttribute("stroke-linecap", "round");
             line.setAttribute("opacity", (0.25 + 0.75 * (j / track.length)).toFixed(2));
-            appendWithCasing(trackLayer, line, 3.4);
+            appendWithCasing(trackLayer, line, 2.5);
           }
         }
 
@@ -791,7 +793,7 @@
             ln.setAttribute("stroke-width", "1.5");
             ln.setAttribute("stroke-dasharray", "3.2 2");
             ln.setAttribute("opacity", "1");
-            appendWithCasing(routeLayer, ln, 3.0);
+            appendWithCasing(routeLayer, ln, 2.3);
           }
           drawRouteLine(org, cur);
           drawRouteLine(cur, dst);
@@ -841,7 +843,7 @@
           v.setAttribute("stroke-width", "1.5");
           v.setAttribute("stroke-linecap", "round");
           v.setAttribute("opacity", "1");
-          appendWithCasing(vectorLayer, v, 3.0);
+          appendWithCasing(vectorLayer, v, 2.3);
           // Small tick at the 5-min endpoint
           var tickLen = 1.5;
           var perpX = Math.cos(rad) * tickLen;
@@ -853,8 +855,9 @@
           endTick.setAttribute("y2", (curV.y + dy + perpY).toFixed(2));
           endTick.setAttribute("stroke", "#6eff9a");
           endTick.setAttribute("stroke-width", "1.5");
+          endTick.setAttribute("stroke-linecap", "round");
           endTick.setAttribute("opacity", "1");
-          appendWithCasing(vectorLayer, endTick, 3.0);
+          appendWithCasing(vectorLayer, endTick, 2.3);
         }
 
         // Ship overlays (trail + trend vector) when a ship is selected
@@ -875,7 +878,7 @@
                 sl.setAttribute("stroke-width", "1.5");
                 sl.setAttribute("stroke-linecap", "round");
                 sl.setAttribute("opacity", (0.25 + 0.75 * (k / strack.length)).toFixed(2));
-                appendWithCasing(trackLayer, sl, 3.0);
+                appendWithCasing(trackLayer, sl, 2.3);
               }
             }
             var sCog = s.cog != null ? s.cog : s.heading;
@@ -895,7 +898,7 @@
               sv.setAttribute("stroke-width", "1.4");
               sv.setAttribute("stroke-linecap", "round");
               sv.setAttribute("opacity", "1");
-              appendWithCasing(vectorLayer, sv, 2.8);
+              appendWithCasing(vectorLayer, sv, 2.1);
             }
           }
         }
