@@ -162,6 +162,62 @@
     .ais-status.ok { color: var(--accent); }
     .ais-status.err { color: var(--danger); }
     .ais-status.warn { color: var(--warn); }
+    .setting-toggle-row { display: flex; align-items: flex-start; gap: 10px; }
+    .setting-toggle-text { flex: 1; min-width: 0; }
+    .setting-toggle-text label { display: block; font-size: 12px; color: var(--text); margin-bottom: 4px; font-weight: 600; }
+    .setting-toggle-text .setting-help { margin: 0; }
+    .setting-toggle {
+      flex-shrink: 0;
+      width: 48px;
+      height: 28px;
+      min-width: 48px;
+      min-height: 44px;
+      padding: 8px 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      position: relative;
+    }
+    .setting-toggle::before {
+      content: "";
+      position: absolute;
+      left: 0; right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 48px;
+      height: 28px;
+      border-radius: 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+    .setting-toggle.on::before {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .setting-toggle-knob {
+      position: absolute;
+      left: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--bg);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      transition: left 160ms ease;
+    }
+    .setting-toggle.on .setting-toggle-knob { left: 23px; }
+    .setting-mini-status {
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .setting-mini-status.warn { color: var(--warn); }
     .ais-diag {
       margin-top: 6px;
       padding: 6px 8px;
@@ -491,6 +547,19 @@
     #tileLayer image.ready, #labelLayer image.ready { opacity: 1; }
     #tileLayer image { image-rendering: auto; }
     #labelLayer image { image-rendering: auto; }
+    /* Halo around every projected line (trail, route, lead vector, ship trail).
+       The dark color matches --radar-bg so on satellite ocean / IFR enroute
+       the halo is invisible, while on bright bases (desert satellite, VFR
+       sectional pastels) it gives the line a hard outline. Two stacked
+       drop-shadows: a tight high-opacity dark ring for outline contrast,
+       and a wider soft blur for separation against busy mid-tones. */
+    #trackLayer,
+    #routeLayer,
+    #vectorLayer {
+      filter:
+        drop-shadow(0 0 0.6px rgba(7, 12, 21, 0.95))
+        drop-shadow(0 0 1.4px rgba(7, 12, 21, 0.55));
+    }
     .page-footer {
       margin-top: 18px;
       padding-top: 12px;

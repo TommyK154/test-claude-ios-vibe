@@ -18,6 +18,11 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 - Vignette between the radar circle and the square corners marks where
   data coverage extends. Contacts render across the full square, not just
   the circle, so tracks don't get cut off at the edge.
+- **Optional day/night overlay** — settings toggle adds a soft shadow
+  over the night side of the map plus warm glows over major cities
+  (footprints + bright cores from Natural Earth public-domain data).
+  Off by default; enabling it lazy-loads the city-shape dataset
+  (~1.7 MB) on first use only.
 - Auto-request geolocation on first load; collapsible location panel with
   airport search (IATA / ICAO / city across ~130 bundled airports).
 
@@ -150,17 +155,6 @@ Ordered roughly by likely ship sequence.
   top-of-list placement, not just a banner.
 
 ### Visual
-- **Day/night terminator** — render a shaded SVG polygon over the map
-  following the solar terminator. Pure math (subsolar lat/lon from UTC),
-  recompute every 60 s. No external API; no feature dependency.
-- **Lead-line contrast over desert / light terrain** — the green lead
-  (projected-path) line fades against tan / desert satellite imagery
-  (observed in central California and around SoCal inland areas).
-  Options: add a dark halo/stroke around the line the same way the
-  plane triangle gets one, or switch to a higher-contrast lead color
-  that stays legible over both ocean and desert, or add a subtle
-  drop-shadow SVG filter. Needs side-by-side testing on ocean,
-  forest, desert, and urban tiles before committing to one.
 - **VFR/IFR chart overlay** — toggle to replace (or overlay) the ESRI
   satellite base with an FAA VFR sectional or low-altitude IFR enroute
   chart. Best first target per research: ChartBundle.com XYZ tiles
