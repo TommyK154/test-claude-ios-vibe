@@ -84,49 +84,54 @@ a fresh session sees them immediately.
 ## 5. Current state
 
 ### Main
-`main` is at PR #35 merged (commit `e8ac711`). Features through this
-point: FAA ArcGIS four-chart picker (Satellite, VFR Sectional, VFR
-Terminal, IFR Low, IFR High) with coverage + range + TAC-proximity
-gates, pennant-handle dual-thumb alt filter, chevron-BAND quick
-filter (soon to be renamed ALT BAND in PR #36), pause-polling on
-tab-hide for selected-plane + military-registry timers,
-`touch-action: pan-x pan-y` on body blocking iOS Safari page-level
-pinch-zoom.
+`main` is at PR #39 merged (commit `906cc8d`). End-to-end feature
+state through this point:
+
+- FAA ArcGIS five-layer chart picker (Satellite, VFR Sectional, VFR
+  Terminal, IFR Low, IFR High) with coverage + range + TAC-proximity
+  gates and per-reason INOP sticker labels (`INOP (US only) /
+  (<30 NM only) / (no TAC)`) tilted at ±3° golden-ratio rotations.
+- Pennant-handle dual-thumb alt filter with apex-on-track alignment
+  and breathing-room top margin between it and the chevron ALT BAND
+  quick-filter chips immediately above.
+- Pause-polling on tab-hide for selected-plane, military-registry,
+  bulk-fetch, and countdown timers.
+- `touch-action: pan-x pan-y` on body blocking iOS Safari page-level
+  pinch-zoom (the `user-scalable=no` viewport meta is ignored by iOS
+  Safari since iOS 10; `touch-action` is honored).
+- **Airport search now bundles every airport on Earth** — ~72 K rows
+  from OurAirports (Unlicense), ~5.5 MB raw / ~1.7 MB gzipped, lazy
+  search index in `app.js` (`buildAirportIndex()`), per-keystroke
+  search <5 ms even at full bundle size. Live-lookup
+  (`fetchAirportLive`) and the dead `aviationapi.com` upstream are
+  fully retired.
+- Route cache is `state.routes[callsign]` (not `callsign|hex` —
+  PR #35 reverted that compound key). Geography cross-check
+  (CLAUDE.md §Known Issues) remains the named next step for the
+  observed misrouting cases.
 
 ### Open PRs
-- **PR #36** (`fix/ui-polish-items-3-6-7a`) — "UI polish". Five
-  commits:
-  1. `01ebe7c` alt-slider pennant mid-point centering (later
-     superseded).
-  2. `54b74b8` INOP sticker per-reason labels (`INOP (US only)`,
-     `INOP (<30 NM only)`, `INOP (no TAC)`).
-  3. `3ea90d2` revert slider centering → apex-on-track + add
-     `margin-top: 8px` on `.alt-range-row` for visual separation
-     from the BAND chip row above.
-  4. `c2ff569` rename BAND chip-row label → ALT BAND.
-  5. `2408457` tighten INOP rotations to ±3° max with golden-ratio
-     magnitude sequence (−3° / +1.85° / −1.15° / +0.7°, signs
-     alternating).
-  Waiting on user's merge.
-- **`docs/handoff-session-wrap`** (this branch) — HANDOFF.md
-  wrap-up for session handoff. Open alongside PR #36.
+- **None.**
 
 ### Stale / orphan branches
-- `claude/review-handoff-principles-a3YKd` — pushed early in the
-  session with a README + HANDOFF sync commit, never opened as a
-  PR. Content is now stale (this HANDOFF update supersedes). Safe
-  to delete remotely when convenient.
-- `feat/backlog-combo-6-4-1-5` — local copy of the merged PR #34
-  branch. Safe to `git branch -D` locally.
-- `fix/route-cache-and-pause-on-hide` — local copy of the merged
-  PR #35 branch. Safe to delete locally.
+Most cleanup is delete-local-only since the repo auto-deletes
+remote branches on merge. Safe to `git branch -D` after pulling
+the latest main:
+- `feat/backlog-combo-6-4-1-5` — PR #34 (merged).
+- `fix/route-cache-and-pause-on-hide` — PR #35 (merged).
+- `fix/ui-polish-items-3-6-7a` — PR #36 (merged).
+- `fix/live-airport-strict-coord-parse` — PR #38 (merged).
+- `docs/handoff-session-wrap` — PR #37 (merged).
+- `fix/airports-bundle-ourairports` — PR #39 (merged).
+- `claude/review-handoff-principles-a3YKd` — never opened as a PR;
+  content stale (superseded by PR #37 + this PR). Safe to delete
+  remotely too.
 
 ### Active planning artifact
-`/root/.claude/plans/inherited-leaping-candy.md` holds the detailed
-roadmap for the seven items the user raised on 2026-04-23. That
-file lives in Claude's workspace and will *not* survive a session
-switch. The canonical backlog copy is §7 below — keep them in
-sync when you revise either.
+`/root/.claude/plans/inherited-leaping-candy.md` holds the most
+recent in-session plan(s). That file lives in Claude's workspace
+and will *not* survive a session switch. The canonical backlog copy
+is §7 below — keep them in sync when you revise either.
 
 ### Deferred admin (user will do from mobile)
 - Swap default branch → `main` (currently `claude/habit-tracker-app-bs1bz`
@@ -260,14 +265,13 @@ persists; when it's gone, this list is the canonical memory.
   mechanism framing and the geography cross-check as the named next
   step.
 - ✅ **UI polish (items 3, 6)** — shipped in PR #36.
-- ✅ **KSZP wrong-location** — strict-numeric guard shipped in PR #38;
-  KSZP also bundled directly into airports.js as an interim hand-add.
-  Now superseded by PR #39 (full OurAirports bundle).
-- 🟡 **OurAirports global airport bundle (PR #39)** — replaces
-  `airports.js` with ~72 K airports from OurAirports, removes the dead
-  `fetchAirportLive`/aviationapi.com path entirely, adds a lazy
-  `buildAirportIndex()` so search-as-you-type stays sub-frame at this
-  scale. See §6 "Airports dataset regeneration" for refresh recipe.
+- ✅ **KSZP wrong-location** — strict-numeric guard + interim manual
+  KSZP row shipped in PR #38; both now superseded by PR #39's full
+  bundle (KSZP resolves natively from OurAirports data).
+- ✅ **Global airport bundle + lazy search index** — shipped in PR #39.
+  72 K airports bundled, dead `fetchAirportLive`/aviationapi.com path
+  retired, `buildAirportIndex()` in app.js keeps search sub-frame.
+  See §6 "Airports dataset regeneration" for refresh recipe.
 
 ### Pending / planned
 - 🔴 **PR B — Pinch-deselect bug.** Root cause isolated. When a
@@ -384,12 +388,31 @@ Six PRs in ~24 hours, in order:
   ship: pause-on-hide extension covering `state.selectedPollTimer`
   and `state.militaryRefreshTimer` alongside the pre-existing
   refresh + countdown timers.
-- PR #36 (open): UI polish — alt-slider pennant apex-on-track with
-  new `.alt-range-row` top margin for visual separation from the
-  ALT BAND row above; INOP sticker per-reason labels reading
-  "INOP (US only) / (<30 NM only) / (no TAC)"; sticker rotations
-  tightened to ±3° with a golden-ratio magnitude sequence;
-  BAND → ALT BAND rename.
+- PR #36: UI polish — alt-slider pennant apex-on-track with new
+  `.alt-range-row` top margin for visual separation from the ALT
+  BAND row above; INOP sticker per-reason labels reading "INOP
+  (US only) / (<30 NM only) / (no TAC)"; sticker rotations tightened
+  to ±3° with a golden-ratio magnitude sequence; BAND → ALT BAND
+  rename.
+- PR #37: Wrap session handoff into HANDOFF.md (§3 stream-timeout
+  rule 9 for plan mode, §5 / §7 / §10 freshened) so a fresh session
+  lands with accurate context. Doc-only.
+- PR #38: KSZP wrong-location investigation. Strict-numeric guard
+  in `fetchAirportLive` + sanity guard (range, null-island);
+  diagnosed `aviationapi.com` as DNS-unreachable; manual KSZP
+  airports.js entry as the user-visible fix while the live path
+  was dying.
+- PR #39: Replace `airports.js` with the full OurAirports public-
+  domain bundle (72,075 rows, ~1.7 MB gzipped). Adds
+  `tools/build-airports.js` (local-only generator, not a deploy-time
+  build). New lazy `buildAirportIndex()` with Maps + first-letter
+  buckets. Removes ~80 lines of dead live-lookup scaffolding
+  (`fetchAirportLive`, `parseDMS`, `strictNum`, `state.airportLive`,
+  `isCodeShaped`, `canonQuery`, `maybeLiveLookup`, dropdown
+  pending-state branches). Search now covers every airport on
+  Earth with sub-frame keystroke latency. KSZP folds into the
+  regenerated bundle naturally; the manual entry from PR #38 is
+  no longer needed.
 
 Commits land on focused feature branches. Never commit to `main`
 directly.
