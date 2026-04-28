@@ -201,9 +201,45 @@
         __airportsFullCache = out;
         return out;
       }
+
+      // Search index built lazily on first match() call. With ~70 K airports
+      // the linear scan that worked at ~7 K rows would chew tens of ms per
+      // keystroke; the index pulls per-keystroke cost back to a few ms via
+      // exact-match Maps (O(1)) and first-letter buckets (O(N/26)).
+      var __airportIndex = null;
+      function buildAirportIndex() {
+        if (__airportIndex) return __airportIndex;
+        var list = getAirports();
+        var byIata = Object.create(null);
+        var byIcao = Object.create(null);
+        var prefIata = Object.create(null);
+        var prefIcao = Object.create(null);
+        var prefCity = Object.create(null);
+        for (var i = 0; i < list.length; i++) {
+          var a = list[i];
+          var ia = a.iata && a.iata.toUpperCase();
+          var ic = a.icao && a.icao.toUpperCase();
+          var ci = a.city && a.city.toUpperCase();
+          if (ia) {
+            if (!byIata[ia]) byIata[ia] = a;
+            (prefIata[ia.charAt(0)] || (prefIata[ia.charAt(0)] = [])).push(a);
+          }
+          if (ic) {
+            if (!byIcao[ic]) byIcao[ic] = a;
+            (prefIcao[ic.charAt(0)] || (prefIcao[ic.charAt(0)] = [])).push(a);
+          }
+          if (ci) {
+            (prefCity[ci.charAt(0)] || (prefCity[ci.charAt(0)] = [])).push(a);
+          }
+        }
+        __airportIndex = { byIata: byIata, byIcao: byIcao, prefIata: prefIata, prefIcao: prefIcao, prefCity: prefCity };
+        return __airportIndex;
+      }
+
       if (typeof window !== "undefined") {
         window.addEventListener("airports-loaded", function () {
           __airportsFullCache = null;          // force re-convert on next call
+          __airportIndex = null;               // force re-index on next match()
           try { if (typeof updateTacReadout === "function") updateTacReadout(); } catch (e) {}
         });
       }
@@ -277,7 +313,6 @@
         lastSelectedPlane: null, // grace-period snapshot after deselect so the marker doesn't disappear
         lastSelectedAt: 0,       // ms timestamp when lastSelectedPlane was set
         aircraftOwner: {}, // hex -> { operator, type, ... } from adsbdb.com, cached per selection
-        airportLive: {},   // ICAO -> { apt } | null | "pending" — live-fetched fallback for fields not in bundled OpenFlights (e.g. small US GA like KSZP)
         aisMessageCount: 0,
         aisFirstMsgAt: 0,
         aisNoTrafficTimer: null,
@@ -2956,83 +2991,6 @@
         }
       });
 
-      // Parses FAA NASR-style DMS coords like "34-20-51.1000N" / "119-03-36.0000W"
-      // into signed decimal degrees. Returns NaN on any parse failure.
-      function parseDMS(s) {
-        if (typeof s !== "string") return NaN;
-        var m = s.match(/^\s*(\d+)[-\s](\d+)[-\s]([\d.]+)\s*([NSEW])\s*$/i);
-        if (!m) return NaN;
-        var deg = parseFloat(m[1]), min = parseFloat(m[2]), sec = parseFloat(m[3]);
-        var val = deg + min / 60 + sec / 3600;
-        var dir = m[4].toUpperCase();
-        if (dir === "S" || dir === "W") val = -val;
-        return val;
-      }
-
-      // Live airport lookup fallback for ICAO codes missing from the bundled
-      // OpenFlights dataset (which omits most small US GA fields). Hits the
-      // free FAA NASR mirror at aviationapi.com, then CORS proxies on failure.
-      // Result cached on state.airportLive keyed by uppercased ICAO.
-      // onResolve fires with the apt object (or null) so the caller can re-render.
-      // Strict numeric parser. Unlike parseFloat, rejects strings that
-      // start with digits but contain DMS punctuation (e.g.
-      // "34-20-51.1000N" → NaN, not 34). Used in fetchAirportLive so
-      // the parseDMS fallback actually runs when aviationapi returns a
-      // DMS string under a *_deg field — without this, the W hemisphere
-      // sign would be silently dropped (cf. KSZP at "34, 119" instead
-      // of (34.34, -119.06)).
-      function strictNum(v) {
-        if (typeof v === "number") return isFinite(v) ? v : NaN;
-        if (typeof v !== "string") return NaN;
-        var s = v.trim();
-        if (!s) return NaN;
-        var n = Number(s);
-        return isFinite(n) ? n : NaN;
-      }
-
-      function fetchAirportLive(icao, onResolve) {
-        icao = (icao || "").trim().toUpperCase();
-        if (!icao) return;
-        var cached = state.airportLive[icao];
-        if (cached === "pending") return;
-        if (cached !== undefined) { onResolve(cached); return; }
-        state.airportLive[icao] = "pending";
-        var base = "https://api.aviationapi.com/v1/airports?apt=" + encodeURIComponent(icao);
-        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
-        tryPhotoUrls(urls, 0).then(function (j) {
-          var arr = j && j[icao];
-          var row = arr && arr.length ? arr[0] : null;
-          if (!row) { state.airportLive[icao] = null; onResolve(null); return; }
-          var lat = strictNum(row.latitude_deg != null ? row.latitude_deg : row.latitude);
-          var lon = strictNum(row.longitude_deg != null ? row.longitude_deg : row.longitude);
-          if (!isFinite(lat)) lat = parseDMS(row.latitude);
-          if (!isFinite(lon)) lon = parseDMS(row.longitude);
-          // Range + null-island guard catches malformed responses,
-          // accidental hemisphere drops, and the "0,0" sentinel.
-          if (!isFinite(lat) || !isFinite(lon)
-              || Math.abs(lat) > 90 || Math.abs(lon) > 180
-              || (lat === 0 && lon === 0)) {
-            state.airportLive[icao] = null;
-            onResolve(null);
-            return;
-          }
-          var apt = {
-            iata: row.faa_ident && row.faa_ident !== row.icao_id ? row.faa_ident : "",
-            icao: row.icao_id || icao,
-            name: row.facility_name || icao,
-            city: row.city || "",
-            country: row.state_full || "United States",
-            lat: lat,
-            lon: lon
-          };
-          state.airportLive[icao] = apt;
-          onResolve(apt);
-        }).catch(function () {
-          state.airportLive[icao] = null;
-          onResolve(null);
-        });
-      }
-
       function setupAirportSearch() {
         var input = document.getElementById("airportInput");
         var dropdown = document.getElementById("airportDropdown");
@@ -3057,64 +3015,78 @@
           // "SFO · San Francisco Intl" — extract the leading code token.
           var sepIdx = q.indexOf(" · ");
           if (sepIdx > 0) q = q.substring(0, sepIdx);
-          var list = getAirports();
-          var exactIata = [], exactIcao = [], prefixIata = [], prefixIcao = [], prefixCity = [], substr = [];
-          for (var i = 0; i < list.length; i++) {
-            var a = list[i];
-            if (a.iata && a.iata === q) exactIata.push(a);
-            else if (a.icao && a.icao === q) exactIcao.push(a);
-            else if (a.iata && a.iata.indexOf(q) === 0) prefixIata.push(a);
-            else if (a.icao && a.icao.indexOf(q) === 0) prefixIcao.push(a);
-            else if (a.city && a.city.toUpperCase().indexOf(q) === 0) prefixCity.push(a);
-            else if ((a.city && a.city.toUpperCase().indexOf(q) !== -1) || (a.name && a.name.toUpperCase().indexOf(q) !== -1)) substr.push(a);
-            var tot = exactIata.length + exactIcao.length + prefixIata.length + prefixIcao.length + prefixCity.length + substr.length;
-            if (tot > 40) break;
-          }
-          var out = exactIata.concat(exactIcao, prefixIata, prefixIcao, prefixCity, substr).slice(0, 8);
-          // Merge in live-fetched airport (e.g. KSZP from aviationapi.com
-          // for small US GA fields absent from bundled OpenFlights).
-          if (!out.length) {
-            var live = state.airportLive[q];
-            if (live && typeof live === "object") out = [live];
-          }
-          return out;
-        }
 
-        // Query looks like a full 4-letter ICAO — the aviationapi.com fallback
-        // is FAA-only so IATA prefixes won't hit. Restricting to 4 letters
-        // also naturally dedupes requests as the user types.
-        function isCodeShaped(q) {
-          q = q.trim().toUpperCase();
-          if (q.indexOf(" · ") > 0) q = q.substring(0, q.indexOf(" · "));
-          return /^[A-Z]{4}$/.test(q);
-        }
-        function canonQuery(q) {
-          q = q.trim().toUpperCase();
-          var sep = q.indexOf(" · ");
-          return sep > 0 ? q.substring(0, sep) : q;
-        }
-        function maybeLiveLookup(q) {
-          if (!isCodeShaped(q)) return;
-          var code = canonQuery(q);
-          fetchAirportLive(code, function () {
-            // Re-render only if user hasn't moved on to a different query.
-            if (canonQuery(input.value) !== code) return;
-            render(match(input.value));
-          });
+          var idx = buildAirportIndex();
+          var seen = Object.create(null);
+          function add(arr, a) {
+            // Same airport may appear in multiple buckets (e.g. iata "SCL"
+            // and icao "SCEL" both first-letter S). Dedup so it surfaces
+            // in the highest-priority bucket only — preserves the
+            // exact / prefix-iata / prefix-icao / prefix-city / substr
+            // ranking from the original linear scan.
+            var key = (a.icao || "") + "|" + (a.iata || "") + "|" + (a.name || "");
+            if (seen[key]) return;
+            seen[key] = true;
+            arr.push(a);
+          }
+
+          var exactIata = [], exactIcao = [], prefixIata = [], prefixIcao = [], prefixCity = [], substr = [];
+
+          if (idx.byIata[q]) add(exactIata, idx.byIata[q]);
+          if (idx.byIcao[q]) add(exactIcao, idx.byIcao[q]);
+
+          var first = q.charAt(0);
+          var bIata = idx.prefIata[first];
+          if (bIata) {
+            for (var pi = 0; pi < bIata.length; pi++) {
+              var pa = bIata[pi];
+              var pu = (pa.iata || "").toUpperCase();
+              if (pu !== q && pu.indexOf(q) === 0) add(prefixIata, pa);
+            }
+          }
+          var bIcao = idx.prefIcao[first];
+          if (bIcao) {
+            for (var ci = 0; ci < bIcao.length; ci++) {
+              var ca = bIcao[ci];
+              var cu = (ca.icao || "").toUpperCase();
+              if (cu !== q && cu.indexOf(q) === 0) add(prefixIcao, ca);
+            }
+          }
+          var bCity = idx.prefCity[first];
+          if (bCity) {
+            for (var bi = 0; bi < bCity.length; bi++) {
+              var ba = bCity[bi];
+              var bc = (ba.city || "").toUpperCase();
+              if (bc.indexOf(q) === 0) add(prefixCity, ba);
+            }
+          }
+
+          // Substring fallback only when prefix paths produced too few hits
+          // — this is the only O(N) path. Bounded to 16 hits so it can't
+          // chew the frame even on a query like "A".
+          var totalSoFar = exactIata.length + exactIcao.length + prefixIata.length + prefixIcao.length + prefixCity.length;
+          if (totalSoFar < 8) {
+            var list = getAirports();
+            for (var si = 0; si < list.length; si++) {
+              var sa = list[si];
+              var sc = (sa.city || "").toUpperCase();
+              var sn = (sa.name || "").toUpperCase();
+              if ((sc && sc.indexOf(q) !== -1) || (sn && sn.indexOf(q) !== -1)) {
+                add(substr, sa);
+                if (substr.length >= 16) break;
+              }
+            }
+          }
+
+          return exactIata.concat(exactIcao, prefixIata, prefixIcao, prefixCity, substr).slice(0, 8);
         }
 
         function render(matches) {
           highlighted = matches.length ? 0 : -1;
           if (!matches.length) {
-            var q = input.value.trim();
-            if (!q) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
+            if (!input.value.trim()) { dropdown.hidden = true; dropdown.innerHTML = ""; return; }
             dropdown.hidden = false;
-            var code = canonQuery(q);
-            var live = isCodeShaped(q) ? state.airportLive[code] : undefined;
-            var msg;
-            if (live === "pending") msg = "Searching FAA registry…";
-            else if (live === null) msg = "No match · try lat/lon below";
-            else msg = "No match in built-in list · try lat/lon below";
+            var msg = "No match · try lat/lon below";
             dropdown.innerHTML = '<div class="apt-item" style="cursor:default"><span class="apt-code" style="color:var(--muted)">—</span><span class="apt-name" style="color:var(--muted)">' + escapeHtml(msg) + '</span></div>';
             return;
           }
@@ -3142,9 +3114,6 @@
                 for (var k = 0; k < list.length; k++) {
                   var cand = list[k];
                   if ((iata && cand.iata === iata) || (icao && cand.icao === icao)) { apt = cand; break; }
-                }
-                if (!apt && icao && state.airportLive[icao] && typeof state.airportLive[icao] === "object") {
-                  apt = state.airportLive[icao];
                 }
                 if (!apt) return;
                 var label = apt.iata || apt.icao;
@@ -3182,28 +3151,16 @@
           return true;
         }
         function applyFirstMatch() {
-          if (applyIndex(highlighted < 0 ? 0 : highlighted)) return true;
-          // Nothing bundled matched — if query looks like a code, try
-          // live lookup then apply when it returns.
-          if (isCodeShaped(input.value)) {
-            maybeLiveLookup(input.value);
-          }
-          return false;
+          return applyIndex(highlighted < 0 ? 0 : highlighted);
         }
 
         input.addEventListener("input", function () {
           toggleClear();
-          var m = match(input.value);
-          if (!m.length) maybeLiveLookup(input.value);
           render(match(input.value));
         });
         input.addEventListener("focus", function () {
           toggleClear();
-          if (input.value) {
-            var m = match(input.value);
-            if (!m.length) maybeLiveLookup(input.value);
-            render(match(input.value));
-          }
+          if (input.value) render(match(input.value));
         });
         var goBtn = document.getElementById("airportGo");
         if (goBtn) goBtn.addEventListener("click", applyFirstMatch);
