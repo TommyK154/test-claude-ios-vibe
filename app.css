@@ -548,17 +548,19 @@
     #tileLayer image { image-rendering: auto; }
     #labelLayer image { image-rendering: auto; }
     /* Halo around every projected line (trail, route, lead vector, ship trail).
-       The dark color matches --radar-bg so on satellite ocean / IFR enroute
-       the halo is invisible, while on bright bases (desert satellite, VFR
-       sectional pastels) it gives the line a hard outline. Two stacked
-       drop-shadows: a tight high-opacity dark ring for outline contrast,
-       and a wider soft blur for separation against busy mid-tones. */
+       Two tight near-zero-blur drop-shadows compound into a sharp ~1 px dark
+       outline that cuts through busy chart ink (VFR sectional pastels, IFR
+       enroute lat/lon grids). A third wider soft drop-shadow gives separation
+       against mid-tone backgrounds (urban satellite, desert) without making
+       the line look heavy. The dark color matches --radar-bg so on satellite
+       ocean / IFR enroute the halo is invisible. */
     #trackLayer,
     #routeLayer,
     #vectorLayer {
       filter:
-        drop-shadow(0 0 0.6px rgba(7, 12, 21, 0.95))
-        drop-shadow(0 0 1.4px rgba(7, 12, 21, 0.55));
+        drop-shadow(0 0 0.5px rgba(7, 12, 21, 1))
+        drop-shadow(0 0 0.5px rgba(7, 12, 21, 1))
+        drop-shadow(0 0 2.4px rgba(7, 12, 21, 0.7));
     }
     .page-footer {
       margin-top: 18px;
