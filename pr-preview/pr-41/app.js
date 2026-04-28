@@ -762,9 +762,9 @@
             line.setAttribute("x2", b.x.toFixed(2));
             line.setAttribute("y2", b.y.toFixed(2));
             line.setAttribute("stroke", "#5ce0ca");
-            line.setAttribute("stroke-width", "1.4");
+            line.setAttribute("stroke-width", "1.7");
             line.setAttribute("stroke-linecap", "round");
-            line.setAttribute("opacity", (0.2 + 0.8 * (j / track.length)).toFixed(2));
+            line.setAttribute("opacity", (0.25 + 0.75 * (j / track.length)).toFixed(2));
             trackLayer.appendChild(line);
           }
         }
@@ -781,9 +781,9 @@
             ln.setAttribute("x2", p2.x.toFixed(2));
             ln.setAttribute("y2", p2.y.toFixed(2));
             ln.setAttribute("stroke", "#ff4ddb");
-            ln.setAttribute("stroke-width", "1.2");
-            ln.setAttribute("stroke-dasharray", "3 2");
-            ln.setAttribute("opacity", "0.9");
+            ln.setAttribute("stroke-width", "1.5");
+            ln.setAttribute("stroke-dasharray", "3.2 2");
+            ln.setAttribute("opacity", "1");
             routeLayer.appendChild(ln);
           }
           drawRouteLine(org, cur);
@@ -831,9 +831,9 @@
           v.setAttribute("x2", (curV.x + dx).toFixed(2));
           v.setAttribute("y2", (curV.y + dy).toFixed(2));
           v.setAttribute("stroke", "#6eff9a");
-          v.setAttribute("stroke-width", "1.2");
+          v.setAttribute("stroke-width", "1.5");
           v.setAttribute("stroke-linecap", "round");
-          v.setAttribute("opacity", "0.9");
+          v.setAttribute("opacity", "1");
           vectorLayer.appendChild(v);
           // Small tick at the 5-min endpoint
           var tickLen = 1.5;
@@ -845,8 +845,8 @@
           endTick.setAttribute("x2", (curV.x + dx + perpX).toFixed(2));
           endTick.setAttribute("y2", (curV.y + dy + perpY).toFixed(2));
           endTick.setAttribute("stroke", "#6eff9a");
-          endTick.setAttribute("stroke-width", "1.2");
-          endTick.setAttribute("opacity", "0.9");
+          endTick.setAttribute("stroke-width", "1.5");
+          endTick.setAttribute("opacity", "1");
           vectorLayer.appendChild(endTick);
         }
 
@@ -865,9 +865,9 @@
                 sl.setAttribute("x2", sb.x.toFixed(2));
                 sl.setAttribute("y2", sb.y.toFixed(2));
                 sl.setAttribute("stroke", "#ffb347");
-                sl.setAttribute("stroke-width", "1.2");
+                sl.setAttribute("stroke-width", "1.5");
                 sl.setAttribute("stroke-linecap", "round");
-                sl.setAttribute("opacity", (0.2 + 0.8 * (k / strack.length)).toFixed(2));
+                sl.setAttribute("opacity", (0.25 + 0.75 * (k / strack.length)).toFixed(2));
                 trackLayer.appendChild(sl);
               }
             }
@@ -885,9 +885,9 @@
               sv.setAttribute("x2", (scur.x + sdx).toFixed(2));
               sv.setAttribute("y2", (scur.y + sdy).toFixed(2));
               sv.setAttribute("stroke", "#ffd89c");
-              sv.setAttribute("stroke-width", "1.1");
+              sv.setAttribute("stroke-width", "1.4");
               sv.setAttribute("stroke-linecap", "round");
-              sv.setAttribute("opacity", "0.9");
+              sv.setAttribute("opacity", "1");
               vectorLayer.appendChild(sv);
             }
           }
