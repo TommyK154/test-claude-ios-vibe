@@ -33,16 +33,6 @@
     <div id="settingsPanel" class="settings-panel" hidden>
       <h3>Settings</h3>
       <div class="setting-block">
-        <div class="setting-toggle-row">
-          <div class="setting-toggle-text">
-            <label for="nightToggle">Day/night overlay</label>
-            <p class="setting-help">Adds a soft shadow over the night side of the map plus warm glows over major cities. Off by default — turning it on downloads ~1.7 MB of city-shape data on first use.</p>
-          </div>
-          <button type="button" id="nightToggle" class="setting-toggle" role="switch" aria-checked="false" aria-label="Toggle day/night overlay"><span class="setting-toggle-knob"></span></button>
-        </div>
-        <div id="nightStatus" class="setting-mini-status" hidden></div>
-      </div>
-      <div class="setting-block">
         <label for="aisKeyInput">aisstream.io API key <span class="muted">(required for ship tracking)</span></label>
         <p class="setting-help">Ship tracking uses <a href="https://aisstream.io/apikeys" target="_blank" rel="noopener">aisstream.io</a>. Sign up (free, ~30 seconds), copy your key, and paste it here. The key is stored only in your browser (localStorage) and is only used to connect to aisstream directly.</p>
         <div class="setting-row">
@@ -111,15 +101,9 @@
             <stop offset="0.72" stop-color="#070c15" stop-opacity="0.45"/>
             <stop offset="1" stop-color="#070c15" stop-opacity="0.95"/>
           </radialGradient>
-          <radialGradient id="cityGlow" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0" stop-color="#fff1c4" stop-opacity="0.85"/>
-            <stop offset="0.35" stop-color="#ffd07a" stop-opacity="0.55"/>
-            <stop offset="1" stop-color="#ffb04a" stop-opacity="0"/>
-          </radialGradient>
         </defs>
         <g id="tileLayer"></g>
         <g id="labelLayer"></g>
-        <g id="nightLayer" style="pointer-events:none"></g>
         <rect x="-110" y="-110" width="220" height="220" fill="url(#vignetteGrad)" style="pointer-events:none"/>
         <circle cx="0" cy="0" r="100" fill="none" stroke="var(--accent-dim)" stroke-width="0.8" style="pointer-events:none"/>
         <g id="radarGrid">
