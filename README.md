@@ -153,14 +153,6 @@ Ordered roughly by likely ship sequence.
 - **Day/night terminator** — render a shaded SVG polygon over the map
   following the solar terminator. Pure math (subsolar lat/lon from UTC),
   recompute every 60 s. No external API; no feature dependency.
-- **Lead-line contrast over desert / light terrain** — the green lead
-  (projected-path) line fades against tan / desert satellite imagery
-  (observed in central California and around SoCal inland areas).
-  Options: add a dark halo/stroke around the line the same way the
-  plane triangle gets one, or switch to a higher-contrast lead color
-  that stays legible over both ocean and desert, or add a subtle
-  drop-shadow SVG filter. Needs side-by-side testing on ocean,
-  forest, desert, and urban tiles before committing to one.
 - **VFR/IFR chart overlay** — toggle to replace (or overlay) the ESRI
   satellite base with an FAA VFR sectional or low-altitude IFR enroute
   chart. Best first target per research: ChartBundle.com XYZ tiles
