@@ -84,7 +84,7 @@ a fresh session sees them immediately.
 ## 5. Current state
 
 ### Main
-`main` is at PR #39 merged (commit `906cc8d`). End-to-end feature
+`main` is at PR #41 merged (commit `7662842`). End-to-end feature
 state through this point:
 
 - FAA ArcGIS five-layer chart picker (Satellite, VFR Sectional, VFR
@@ -105,6 +105,21 @@ state through this point:
   search <5 ms even at full bundle size. Live-lookup
   (`fetchAirportLive`) and the dead `aviationapi.com` upstream are
   fully retired.
+- **Overlay-line dark casings (PR #41).** All four overlay-line
+  classes — plane trail (cyan), route (magenta dashed), lead vector
+  (green) + trend tick, ship trail (amber), ship vector (amber) —
+  now render twice: a slightly wider dark casing
+  (`rgba(7,12,21,0.7)`, total width = colored width + 0.7 px) under
+  the colored line. Implementation in `renderOverlays`'s nested
+  `appendWithCasing(parent, line, casingWidth)` helper; cloneNode
+  preserves dasharray so the dashed route's casing aligns with its
+  magenta dashes, and inherits the line's `opacity` so the trail's
+  fade-out gradient still works. Plus a single soft
+  `drop-shadow(0 0 1.4px rgba(7,12,21,0.4))` filter on
+  `#trackLayer / #routeLayer / #vectorLayer` for separation glow.
+  Result: lines lift cleanly off any base (satellite, VFR sectional
+  pastels, IFR enroute grids, dense urban). Lead trend tick has
+  `stroke-linecap: round` matching the lead vector's rounded ends.
 - Route cache is `state.routes[callsign]` (not `callsign|hex` —
   PR #35 reverted that compound key). Geography cross-check
   (CLAUDE.md §Known Issues) remains the named next step for the
@@ -123,15 +138,20 @@ the latest main:
 - `fix/live-airport-strict-coord-parse` — PR #38 (merged).
 - `docs/handoff-session-wrap` — PR #37 (merged).
 - `fix/airports-bundle-ourairports` — PR #39 (merged).
+- `docs/handoff-post-pr39` — PR #40 (merged).
+- `claude/read-handoff-plan-FvGGw` — PR #41 (merged). Was the
+  branch the PR-#41 session worked on; carried both Part A
+  (line-contrast halo, kept) and Part B (day/night overlay,
+  reverted in-PR before merge — see §7 PR G entry).
 - `claude/review-handoff-principles-a3YKd` — never opened as a PR;
-  content stale (superseded by PR #37 + this PR). Safe to delete
-  remotely too.
+  content stale. Safe to delete remotely too.
 
 ### Active planning artifact
-`/root/.claude/plans/inherited-leaping-candy.md` holds the most
-recent in-session plan(s). That file lives in Claude's workspace
-and will *not* survive a session switch. The canonical backlog copy
-is §7 below — keep them in sync when you revise either.
+None right now — PR #41 just merged. The plan file used to draft
+PR #41 (`/root/.claude/plans/i-m-continuing-work-on-frolicking-mochi.md`)
+is now stale. Plan files live in Claude's workspace and don't
+survive a session switch, so the canonical backlog is §7 below —
+keep them in sync when you revise either.
 
 ### Deferred admin (user will do from mobile)
 - Swap default branch → `main` (currently `claude/habit-tracker-app-bs1bz`
@@ -272,6 +292,15 @@ persists; when it's gone, this list is the canonical memory.
   72 K airports bundled, dead `fetchAirportLive`/aviationapi.com path
   retired, `buildAirportIndex()` in app.js keeps search sub-frame.
   See §6 "Airports dataset regeneration" for refresh recipe.
+- ✅ **HANDOFF refresh** — shipped in PR #40 (doc-only).
+- ✅ **Overlay-line contrast (was the README "Lead-line contrast"
+  Future-Work item)** — shipped in PR #41 via the dark-casing
+  approach. Each of the four overlay-line classes is drawn twice:
+  thin dark casing first, colored line on top. Matches the
+  cartographic convention the plane chevrons already used
+  (`chevShadow` polyline). Reads cleanly across all five base layers
+  (satellite ocean / desert / urban + four FAA charts). See §5
+  "Main" for implementation pointers.
 
 ### Pending / planned
 - 🔴 **PR B — Pinch-deselect bug.** Root cause isolated. When a
@@ -301,11 +330,48 @@ persists; when it's gone, this list is the canonical memory.
   the selected plane's tail while `state.historicalFetched[hex]` is
   false. Fades out when the real trail arrives. ~30 lines JS + 15
   CSS.
-- 🔴 **PR G — Day/night terminator.** Gradient-filled nighttime
-  polygon over the radar, subsolar-point math recomputed every 60 s.
-  Pure math, no new deps. Largest feature PR; ship last. Visual
-  reference: ForeFlight / SkyDemon / Windy.com use opacity-gradient
-  with no hard edge.
+- 🔴 **PR G — Day/night terminator. Attempted in PR #41 (Part B);
+  reverted before merge.** User feedback: "I don't like this
+  implementation and it needs a lot of work for another time."
+  What was tried (so the next attempt knows what to avoid or
+  reconsider, not what to copy):
+
+  - **Approach:** opt-in settings toggle (default off). When
+    enabled, a 32×32 grid of darkening rects covered the SVG;
+    each cell looked up solar elevation at its center and rendered
+    at `0..0.55` opacity ramped over elevation `-18°..0°`. SVG
+    anti-aliasing between adjacent rects produced the gradient
+    look. Plus warm city glows: ~11 K Natural Earth urban-area
+    polygons (low-opacity warm fill) and ~4 K populated-place
+    radial-gradient circles (size scaled by population).
+  - **Data bundle:** ~1.7 MB `nightlights.js` (Natural Earth
+    public-domain, urban_areas + populated_places, Douglas-Peucker
+    simplified) generated by a `tools/build-nightlights.js` script.
+    Lazy-loaded only when the toggle was first enabled, so
+    non-users paid 0 bytes.
+  - **Math:** `subsolarPoint(date)` (NOAA solar-calculator
+    approximation) + `solarElevationDeg(lat, lon, sub)` +
+    `unproject(x, y)` for inverse projection. Sanity-checked
+    against expected SFO/Tokyo elevations at known UTC times.
+  - **Render hooks:** called from `renderTiles()` (same triggers
+    as map-state changes) plus a 60 s `setInterval` for terminator
+    drift.
+  - **Smooth fade-in:** `nightFeatureAlpha()` faded city features
+    in across nautical twilight (`-3°..-12°`) so they didn't pop
+    on at sunset.
+
+  Things explicitly **not** attempted (called out in the PR body):
+  real VIIRS Black Marble pixel imagery (zoom ceiling ~z8 vs our
+  z10–z14), real street networks (no public bundleable global
+  street dataset within the no-CDN / no-key constraints).
+
+  No specific direction has been chosen for the next attempt. If
+  the rejection was about visual treatment (32×32 grid quantization,
+  city-glow style, opt-in toggle vs default-on), the math /
+  Natural-Earth bundle pipeline above is reusable. If the rejection
+  was about scope (whole feature too heavy), a stripped-back version
+  — just the terminator gradient, no cities, no bundle — would land
+  much smaller. **Get a direction before reattempting.**
 
 ### Out of scope until a use case forces it
 - **Multi-band altitude filter** — contiguous-only / bitset-swap /
@@ -316,10 +382,10 @@ persists; when it's gone, this list is the canonical memory.
 - **Long-standing items from README Future Work + CLAUDE.md Known
   Issues**: loiter detection, track-divergence alerts, callsign-
   switch detection, squawk-change history, "dark" reappearance,
-  anchor-drift, distress push, lead-line contrast, weather overlay,
-  momentum-on-pan, double-tap zoom, authenticated OpenSky, further
-  JS subdivision, CSP meta tag, OpenSky cross-flight waypoint
-  filter. Pick any time.
+  anchor-drift, distress push, weather overlay, momentum-on-pan,
+  double-tap zoom, authenticated OpenSky, further JS subdivision,
+  CSP meta tag, OpenSky cross-flight waypoint filter. Pick any
+  time.
 
 ## 8. Recipe: open a PR
 
@@ -413,6 +479,25 @@ Six PRs in ~24 hours, in order:
   Earth with sub-frame keystroke latency. KSZP folds into the
   regenerated bundle naturally; the manual entry from PR #38 is
   no longer needed.
+- PR #40: HANDOFF refresh post-PR-39 — bumped §5 main pointer,
+  added §6 "Airports dataset regeneration" recipe, freshened §7
+  closed-list, recorded the 2026-04-26 raw.githubusercontent.com
+  reachability finding for sandbox sessions. Doc-only.
+- PR #41: Originally scoped as two parts — line-contrast halo
+  (Part A) and day/night terminator overlay (Part B). Part B
+  reverted in-PR after preview review per user direction
+  ("I don't like this implementation and it needs a lot of work
+  for another time"). Part A shipped: switched the four overlay-
+  line classes (trail, route, lead vector + tick, ship trail,
+  ship vector) from a CSS `drop-shadow`-only halo to a per-line
+  dark-casing approach, after iterative review showed soft
+  Gaussian halos still lost the lines on dense VFR sectional and
+  IFR enroute backdrops. Final tuning: casing total width =
+  colored width + 0.7 px, casing alpha 0.7, soft drop-shadow
+  glow `0 0 1.4px rgba(7,12,21,0.4)`. Lead trend tick gained
+  `stroke-linecap: round` to match the lead vector's rounded caps
+  at the tip. See §7 PR G entry for the reverted day/night
+  attempt's implementation notes.
 
 Commits land on focused feature branches. Never commit to `main`
 directly.
