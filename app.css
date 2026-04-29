@@ -491,6 +491,16 @@
     #tileLayer image.ready, #labelLayer image.ready { opacity: 1; }
     #tileLayer image { image-rendering: auto; }
     #labelLayer image { image-rendering: auto; }
+    /* Soft halo glow on the overlay groups. The hard outline is now drawn
+       per-line as a wider dark "casing" stroke under each colored stroke
+       (see drawTrailLine / drawRouteLine / drawVectorLine in app.js); this
+       filter just adds a separation glow on top so the lines lift cleanly
+       off busy backdrops (urban satellite, IFR enroute grids). */
+    #trackLayer,
+    #routeLayer,
+    #vectorLayer {
+      filter: drop-shadow(0 0 1.4px rgba(7, 12, 21, 0.4));
+    }
     .page-footer {
       margin-top: 18px;
       padding-top: 12px;
