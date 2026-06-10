@@ -363,12 +363,25 @@ data; the concentric rings are pure distance references (no clip-path).
     key, never observed directly.
 
   Candidate fixes (each addresses a different subset):
-  - **Geography cross-check at render time**: if both
-    `route.origin.lat/lon` and `route.destination.lat/lon` are
-    > ~1000 NM from the plane's current position, suppress the
-    route line + card block. Cheap (two distance calcs per
-    render). Would have caught both observed cases regardless
-    of root cause. **Strongest next step.**
+  - **Geography cross-check at render time**: validated and
+    REVISED by `tools/test-route-plausibility.js`. The original
+    "both endpoints > 1000 NM away" idea is falsified by the
+    test — it suppresses a CORRECT long-haul filing at mid-cruise
+    (SFO→JFK over Nebraska is > 1000 NM from both endpoints) and
+    never catches QXE2316 (whose wrong endpoints are all within
+    California). The validated rule is the **ellipse check** in
+    `routePlausibility()`: a plane flying a route satisfies
+    `dOrigin + dDest ≈ routeLength`, so suppress when the sum
+    exceeds `routeLength × 1.25 + 250 NM`. Catches UAL2192
+    everywhere and QXE2316 from mid-leg onward; provably keeps
+    correct filings (incl. weather deviations) visible.
+    **Render-time suppression ships in the next change.**
+  - **Route diagnostics (shipped)**: `state.routeDiagLog` ring
+    buffer records every route fetch (with hex), every
+    mid-selection callsign change (the stale-transponder signal),
+    and throttled plausibility evals. Tap the route block on the
+    selected card to copy the evidence trail — paste it back to
+    classify the mechanism of any future misrouting incident.
   - **Re-fetch on selection** instead of session-long cache —
     addresses stale-adsbdb-filing only. Doesn't help stale
     transponder.
@@ -435,7 +448,15 @@ sessions.
 
 ## Verification
 
-There are no automated tests. After changes, open `index.html` in a browser
+Node tests cover the pure helpers between the `TESTABLE-PURE-START/END`
+sentinels in `app.js` (extracted verbatim by `tools/extract-testable.js` —
+keep that block dependency-closed: no DOM, no `state`, no `Date.now()`):
+
+- `node --check app.js` — syntax, after every edit.
+- `node tools/test-route-plausibility.js` — route geography cross-check
+  against the documented misrouting incidents + positive controls.
+
+Everything else is manual. After changes, open `index.html` in a browser
 and exercise: preset selection, geolocation, custom lat/lon, range slider,
 auto-refresh countdown, tap-to-select on radar and list, API fallback
 (the page must still render an error state if both APIs fail).

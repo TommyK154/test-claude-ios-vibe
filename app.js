@@ -15,6 +15,83 @@
         banner.hidden = false;
       })();
 
+      // ==== TESTABLE-PURE-START ====
+      // Everything between these sentinels is extracted verbatim by
+      // tools/extract-testable.js and exercised by the node tests in
+      // tools/ (see CLAUDE.md "Verification"). Keep this block
+      // dependency-closed: no DOM, no `state`, no Date.now(), nothing
+      // defined outside the sentinels.
+
+      var NM_TO_KM = 1.852;
+
+      function num(v) {
+        if (v == null) return null;
+        var n = typeof v === "number" ? v : parseFloat(v);
+        return isFinite(n) ? n : null;
+      }
+
+      function haversineNm(lat1, lon1, lat2, lon2) {
+        var R = 6371;
+        var toRad = Math.PI / 180;
+        var dLat = (lat2 - lat1) * toRad;
+        var dLon = (lon2 - lon1) * toRad;
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return (R * c) / NM_TO_KM;
+      }
+
+      // Geography cross-check for adsbdb filed routes (CLAUDE.md "Route
+      // lookups misrepresenting today's flight"). The documented failure
+      // mechanisms — a stale callsign left in the transponder from a
+      // prior leg, and a stale/typical filing in adsbdb — produce a
+      // route the aircraft cannot actually be flying. A plane that IS
+      // flying a route satisfies dOrigin + dDest ≈ routeLength (the
+      // locus is an ellipse with foci at the endpoints), so we suppress
+      // when the sum exceeds routeLength × FACTOR + SLACK. The slack
+      // absorbs great-circle bowing, weather deviations, and holds.
+      //
+      // NOTE: the older idea recorded in CLAUDE.md — "suppress when both
+      // endpoints are > 1000 NM away" — is WRONG for long-haul: at
+      // mid-cruise on any route longer than ~2000 NM the plane is
+      // legitimately > 1000 NM from both endpoints, so a correct filing
+      // would be suppressed. tools/test-route-plausibility.js proves
+      // both that failure and this check's coverage. Routes without
+      // coordinates always pass — never suppress what we can't check.
+      var ROUTE_ELLIPSE_FACTOR = 1.25;
+      var ROUTE_ELLIPSE_SLACK_NM = 250;
+      function routePlausibility(route, planeLat, planeLon) {
+        if (!route || route.state !== "ok" || !route.origin || !route.destination) {
+          return { ok: true, reason: "no-route" };
+        }
+        var o = route.origin, d = route.destination;
+        if (o.lat == null || o.lon == null || d.lat == null || d.lon == null ||
+            planeLat == null || planeLon == null) {
+          return { ok: true, reason: "no-coords" };
+        }
+        var dOriginNm = haversineNm(planeLat, planeLon, o.lat, o.lon);
+        var dDestNm = haversineNm(planeLat, planeLon, d.lat, d.lon);
+        var routeLenNm = haversineNm(o.lat, o.lon, d.lat, d.lon);
+        var maxSumNm = routeLenNm * ROUTE_ELLIPSE_FACTOR + ROUTE_ELLIPSE_SLACK_NM;
+        var out = {
+          dOriginNm: dOriginNm,
+          dDestNm: dDestNm,
+          routeLenNm: routeLenNm,
+          maxSumNm: maxSumNm
+        };
+        if (dOriginNm + dDestNm > maxSumNm) {
+          out.ok = false;
+          out.reason = "off-ellipse";
+        } else {
+          out.ok = true;
+          out.reason = "in-range";
+        }
+        return out;
+      }
+
+      // ==== TESTABLE-PURE-END ====
+
       // ==================== PRESETS · AIRPORTS ====================
 
       var PRESETS = [
@@ -288,8 +365,6 @@
         var src = state.activeSource || "";
         return /proxy|opensky/i.test(src) ? REFRESH_MS_FALLBACK : REFRESH_MS_FAST;
       }
-      var NM_TO_KM = 1.852;
-
       // ==================== STATE · HELPERS · UI BUILDERS ====================
 
       var state = {
@@ -301,6 +376,7 @@
         shipTracks: {},
         historicalFetched: {},
         routes: {},
+        routeDiagLog: [],  // ring buffer (cap 20) of route fetches / callsign changes / plausibility evals — tap the route block on the card to copy
         selectedHex: null,
         selectedMmsi: null,
         selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
@@ -426,6 +502,25 @@
           var tgt = e.target && e.target.closest ? e.target : null;
           var btn = tgt && tgt.closest(".sel-close");
           if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); return; }
+          // Route block tap-to-copy (mirrors the tile-status diagnostic):
+          // surfaces the routeDiagLog evidence trail for misrouting reports.
+          var routeEl = tgt && tgt.closest(".sel-route");
+          if (routeEl) {
+            e.preventDefault(); e.stopPropagation();
+            var diag = buildRouteDiag();
+            var flash = function (msg) { routeEl.textContent = msg; };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(diag).then(
+                function () { flash("ROUTE DIAGNOSTIC COPIED"); },
+                function () { console.log("[route-diag]", diag); flash("COULDN'T COPY"); }
+              );
+            } else {
+              console.log("[route-diag]", diag);
+              flash("CLIPBOARD UNAVAILABLE");
+            }
+            // The card re-renders within a few seconds (pollSelected),
+            // restoring the normal route block — no manual restore needed.
+          }
         });
       }
       var liveDot = $("liveDot");
@@ -574,18 +669,7 @@
         liveDot.classList.add("err");
       }
 
-      function haversineNm(lat1, lon1, lat2, lon2) {
-        var R = 6371;
-        var toRad = Math.PI / 180;
-        var dLat = (lat2 - lat1) * toRad;
-        var dLon = (lon2 - lon1) * toRad;
-        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return (R * c) / NM_TO_KM;
-      }
-
+      // haversineNm + num live in the TESTABLE-PURE block at the top.
 
       // ==================== NORMALIZERS · FETCH · TRACKS · OVERLAYS ====================
 
@@ -671,10 +755,16 @@
         return Math.min(60, s) * 1000;
       }
 
-      function num(v) {
-        if (v == null) return null;
-        var n = typeof v === "number" ? v : parseFloat(v);
-        return isFinite(n) ? n : null;
+      // Evidence trail for the route-misrouting investigation (CLAUDE.md
+      // Known Issues). Each entry distinguishes the candidate mechanisms:
+      // a "callsign-change" event implicates a stale transponder callsign;
+      // a clean fetch with an implausible "eval" implicates a stale adsbdb
+      // filing; the same callsign fetched under two hexes in one session
+      // is the (never yet observed) cache collision.
+      function routeDiagPush(entry) {
+        entry.t = Date.now();
+        state.routeDiagLog.push(entry);
+        if (state.routeDiagLog.length > 20) state.routeDiagLog.shift();
       }
 
       function fetchRoute(callsign) {
@@ -683,6 +773,7 @@
         if (!c || c.length < 3) return;
         if (state.routes[c]) return;
         state.routes[c] = { state: "loading" };
+        var hexAtFetch = state.selectedHex || "";
         var base = "https://api.adsbdb.com/v0/callsign/" + encodeURIComponent(c);
         var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
         tryPhotoUrls(urls, 0).then(function (data) {
@@ -696,10 +787,12 @@
           } else {
             state.routes[c] = { state: "none" };
           }
+          routeDiagPush({ ev: "fetch", callsign: c, hex: hexAtFetch, result: state.routes[c].state, route: state.routes[c] });
           renderSelected();
           renderOverlays();
         }).catch(function () {
           state.routes[c] = { state: "error" };
+          routeDiagPush({ ev: "fetch", callsign: c, hex: hexAtFetch, result: "error" });
         });
       }
 
@@ -2586,19 +2679,71 @@
         return html;
       }
 
+      // Throttle stamp for per-render plausibility logging — one eval entry
+      // per callsign per 30 s is plenty for the evidence trail.
+      var routeDiagEvalAt = {};
+
       function renderRouteBlock(callsign) {
         // Sad-state (no route, loading, not found) is already communicated by
         // the ROUTE chip in the loading-row strip — don't duplicate it as a
         // full-width block. Only render when we have a resolved origin+dest.
         var r = state.routes[callsign];
         if (!r || r.state !== "ok") return "";
+        var sel = getSelectedPlane();
+        if (sel && sel.lat != null) {
+          var now = Date.now();
+          if (!routeDiagEvalAt[callsign] || now - routeDiagEvalAt[callsign] > 30000) {
+            routeDiagEvalAt[callsign] = now;
+            var ev = routePlausibility(r, sel.lat, sel.lon);
+            routeDiagPush({ ev: "eval", callsign: callsign, hex: sel.hex || "", lat: sel.lat, lon: sel.lon, check: ev });
+          }
+        }
         var oCode = escapeHtml(r.origin.iata || r.origin.icao || "");
         var dCode = escapeHtml(r.destination.iata || r.destination.icao || "");
-        return '<div class="sel-route">' +
+        return '<div class="sel-route" title="Tap to copy route diagnostic">' +
           '<span class="sel-airport">' + oCode + '</span>' +
           '<span class="sel-arrow">→</span>' +
           '<span class="sel-airport">' + dCode + '</span>' +
           '</div>';
+      }
+
+      // key=value diagnostic payload for the route investigation — same
+      // contract as buildTileDiag(): technical detail lives here, never in
+      // the visible card text. One line per routeDiagLog entry.
+      function buildRouteDiag() {
+        function pt(lat, lon) {
+          return (lat != null ? (+lat).toFixed(3) : "?") + "," + (lon != null ? (+lon).toFixed(3) : "?");
+        }
+        var c = state.center || {};
+        var head = "routediag center=" + pt(c.lat, c.lon) +
+          " sel=" + (state.selectedHex || "-") +
+          " t=" + new Date().toISOString() +
+          " ua=" + (navigator.userAgent || "").replace(/\s+/g, " ").slice(0, 60);
+        var lines = state.routeDiagLog.map(function (e) {
+          var s = new Date(e.t).toISOString() + " ev=" + e.ev;
+          if (e.callsign) s += " callsign=" + e.callsign;
+          if (e.hex) s += " hex=" + e.hex;
+          if (e.ev === "fetch") {
+            s += " result=" + e.result;
+            if (e.route && e.route.state === "ok") {
+              s += " o=" + (e.route.origin.iata || e.route.origin.icao || "?") + "@" + pt(e.route.origin.lat, e.route.origin.lon);
+              s += " d=" + (e.route.destination.iata || e.route.destination.icao || "?") + "@" + pt(e.route.destination.lat, e.route.destination.lon);
+            }
+          } else if (e.ev === "callsign-change") {
+            s += " from=" + e.from + " to=" + e.to;
+          } else if (e.ev === "eval" && e.check) {
+            s += " pos=" + pt(e.lat, e.lon) +
+              " ok=" + e.check.ok + " reason=" + e.check.reason;
+            if (e.check.dOriginNm != null) {
+              s += " dO=" + Math.round(e.check.dOriginNm) +
+                " dD=" + Math.round(e.check.dDestNm) +
+                " len=" + Math.round(e.check.routeLenNm) +
+                " max=" + Math.round(e.check.maxSumNm);
+            }
+          }
+          return s;
+        });
+        return [head].concat(lines).join("\n");
       }
 
       function renderPhotoBlock(hex) {
@@ -2944,6 +3089,11 @@
           if (vr != null) base2.vertRate = vr;
           base2.onGround = onGround;
           var callsign = (a.flight || "").toString().trim();
+          // A mid-selection callsign switch is the stale-transponder /
+          // callsign-change signal the route investigation needs — log it.
+          if (callsign && base2.callsign && callsign !== base2.callsign) {
+            routeDiagPush({ ev: "callsign-change", hex: hex.toLowerCase(), from: base2.callsign, to: callsign });
+          }
           if (callsign) base2.callsign = callsign;
           if (a.r) base2.registration = a.r;
           if (a.t) base2.type = a.t;
