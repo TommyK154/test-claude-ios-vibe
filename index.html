@@ -16,6 +16,12 @@
     <div class="tactical-strip">
       <span class="brand"><span class="dot" aria-hidden="true"></span>FLIGHT RADAR</span>
       <span class="readout" id="tacReadout">— · 0 NM · 0</span>
+      <button type="button" id="findBtn" class="tac-icon" aria-label="Find specific aircraft">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.2"/>
+          <line x1="10.2" y1="10.2" x2="13.5" y2="13.5"/>
+        </svg>
+      </button>
       <button type="button" id="settingsBtn" class="tac-icon" aria-label="Settings">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
           <line x1="2" y1="4" x2="10" y2="4"/>
@@ -29,6 +35,22 @@
           <circle cx="11" cy="12" r="1.6" fill="currentColor" stroke="none"/>
         </svg>
       </button>
+    </div>
+    <div id="findPanel" class="find-panel" hidden>
+      <h3>Find Aircraft</h3>
+      <div class="setting-block">
+        <label for="findInput">Hex, tail number, or callsign</label>
+        <p class="setting-help">Search any aircraft worldwide. If it's currently broadcasting ADS-B, the radar will re-center on its live position. Otherwise we'll show its last-seen position from OpenSky.</p>
+        <div class="setting-row">
+          <input type="text" id="findInput" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="e.g. N738C, UAL822, A12710">
+          <button type="button" id="findSubmit" class="btn-primary">SEARCH</button>
+        </div>
+        <div id="findStatus" class="find-status"></div>
+        <div id="findRecent" class="find-recent" hidden>
+          <span class="find-recent-label">Recent</span>
+          <div id="findRecentList" class="find-recent-list"></div>
+        </div>
+      </div>
     </div>
     <div id="settingsPanel" class="settings-panel" hidden>
       <h3>Settings</h3>

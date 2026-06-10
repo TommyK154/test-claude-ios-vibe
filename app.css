@@ -176,6 +176,65 @@
     }
     .ais-diag-hint { margin-top: 6px !important; font-size: 11px; }
 
+    /* Find-aircraft panel — same overlay/visibility pattern as .settings-panel. */
+    .find-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .find-panel h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+    .find-status {
+      margin-top: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      min-height: 14px;
+      line-height: 1.5;
+    }
+    .find-status.err { color: var(--danger); }
+    .find-status.ok { color: var(--accent); }
+    .find-status.warn { color: var(--warn); }
+    .find-recent {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border);
+    }
+    .find-recent-label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .find-recent-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .find-recent-chip {
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .find-recent-chip:active { background: var(--accent-soft); }
+    /* Stale-aircraft marker: dashed stroke + reduced opacity. Applied as a
+       group-level class on the marker <g> so child polygon/circle/chevrons
+       inherit the stroke style. */
+    .plane-stale { opacity: 0.55; }
+    .plane-stale polygon, .plane-stale circle { stroke-dasharray: 1.2 0.8; }
+
     .ships-hint {
       background: var(--surface);
       border: 1px dashed var(--border-2);
@@ -678,6 +737,7 @@
     .sel-alert.mil { background: rgba(255, 158, 74, 0.14); border: 1px solid #ff9e4a; color: #ffbb80; }
     .sel-alert.notable { background: rgba(92, 224, 202, 0.1); border: 1px solid var(--accent); color: var(--accent); }
     .sel-alert.warn { background: rgba(227, 125, 125, 0.12); border: 1px solid var(--danger); color: #f3b3b3; }
+    .sel-alert.stale { background: rgba(180, 180, 180, 0.1); border: 1px dashed var(--muted); color: var(--muted); }
 
     .loading-row {
       display: flex;
