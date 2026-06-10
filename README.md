@@ -78,6 +78,15 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   sample: time, lat, lon, course, groundspeed, altitude, vertical rate
   (the FlightAware tracklog shape). Browser-only: flights are only
   captured while the app is running somewhere.
+- **Hours ledger + maintenance alerts** — each watched plane's LOG panel
+  totals logged flight hours plus a user-set offset (for hours flown
+  while the app was closed) against a "due at" interval; the summary
+  turns amber at 90% and red at 100%, with an in-app banner when a
+  landing pushes the total across either threshold.
+- **Airport-scoped alerts** — set an ALERT ICAO on a watched plane and
+  takeoff/landing banners fire only at that field, plus an
+  `INBOUND · 15 NM` pre-alert when the plane is descending within 20 NM
+  — the ground-crew "prepare for arrival" case.
 - **Contact-list filter & sort.** The list under the radar has filter
   chips (ALL · AIR · GROUND · MIL · NOTABLE · ⚠) and sort chips
   (DIST · ALT · SPD · A–Z, each with an asc/desc toggle). Ships get
@@ -142,6 +151,19 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
 ## Future Work
 
 Ordered roughly by likely ship sequence.
+
+### Specific-plane tracker (next phases)
+- **Web/system notifications (PWA)** — takeoff/landing alerts as real
+  iOS notifications require a manifest + service worker (installed
+  Home-Screen PWA, iOS 16.4+) and only fire while the app can run.
+  Deliberately deferred until after the in-app phase proves out.
+- **Backend phase** — 24/7 logging and push alerts with the app closed
+  need an always-on poller (e.g. a free-tier worker + cron). This is the
+  accepted limitation of the browser-only phase: flights are only
+  captured while someone has the app open.
+- **Weather per CSV row** (stretch) — wind/temp at the sample's time
+  and altitude needs a new runtime API origin (e.g. open-meteo);
+  requires explicit sign-off since it widens the allowed-endpoints set.
 
 ### SIGINT
 - **Loiter detection** — flag aircraft with a path-length / net-displacement

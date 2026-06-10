@@ -507,6 +507,9 @@ keep that block dependency-closed: no DOM, no `state`, no `Date.now()`):
 - `node --check app.js` — syntax, after every edit.
 - `node tools/test-route-plausibility.js` — route geography cross-check
   against the documented misrouting incidents + positive controls.
+- `node tools/test-flight-session.js` — takeoff/landing state machine
+  (clean cycles, debounce, touch-and-go, gaps) + maintenance-hours
+  arithmetic.
 
 Everything else is manual. After changes, open `index.html` in a browser
 and exercise: preset selection, geolocation, custom lat/lon, range slider,

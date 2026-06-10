@@ -1,7 +1,49 @@
 # HANDOFF
 
-Last session: 2026-04-23. This file exists so a fresh Claude session
+Last session: 2026-06-10. This file exists so a fresh Claude session
 can continue working on this repo without the prior session's context.
+
+## 0. 2026-06-10 session summary (branch `claude/relaxed-newton-ls331x`)
+
+Eight commits, sequenced as plan phases; all node tests green
+(`tools/test-route-plausibility.js`, `tools/test-flight-session.js`).
+
+Bug fixes (root causes verified by code audit before changing anything):
+1. Pinch-deselect (was §7 PR B) — `enterPan(..., fromPinch)` flag;
+   gesture invariant #8 added to CLAUDE.md.
+2. `initGeo()` now routes through `onCenterChanged()` (AIS bbox was
+   stale after first-load geolocation).
+3. Dead-reckoning (was §7 PR D/E): `baseAt` backdated by `seen_pos`
+   via `posAgeMs()`; bulk fetch no longer merges gsKt/trackDeg into the
+   selected plane inside the selFreshBulk window without resetting the
+   base (the "jumps ahead" bug).
+4. Route misrouting: `routePlausibility()` ELLIPSE check (dO + dD ≤
+   len × 1.25 + 250 NM). NOTE: the old "both endpoints > 1000 NM" idea
+   from CLAUDE.md was FALSIFIED by the test (suppresses correct
+   long-haul filings mid-cruise) — don't resurrect it. Render-time
+   suppression + UNVERIFIED card chip + 30 min/5 min cache TTLs +
+   re-fetch on callsign change. `state.routeDiagLog` + tap the route
+   block to copy evidence (mirrors tile diag).
+
+New feature — specific-plane tracker, browser-only Phase 1:
+- Watchlist (cap 10, localStorage `watch.list`): WATCH button on card,
+  add-by-registration via adsbdb in settings, dashed accent ring on
+  radar, tap-to-jump rows.
+- Watch poller: one `/v2/hex/` req per 10 s round-robin (~0.1 req/s
+  flat), dormant backoff, paused on tab-hide.
+- Flight logger: `flightSessionStep` (pure, node-tested) detects
+  takeoff/landing; IndexedDB `radarTracker` (flights + points);
+  `nearestAirport()` 1°×1° grid over the airports bundle;
+  `navigator.storage.persist()` requested on first write.
+- LOG panel per plane: flights list, per-flight CSV export
+  (FlightAware tracklog columns, iOS share sheet), hours ledger +
+  offset + "due at" maintenance interval (banner at 90%/100%),
+  ALERT ICAO scoping + INBOUND pre-alert (≤20 NM, descending).
+
+Known follow-ups: PWA/system notifications, backend phase for 24/7
+logging, weather-per-CSV-row (all in README Future Work). The
+testable-pure sentinel block + `tools/extract-testable.js` is the
+pattern for any new pure logic.
 
 ## 1. What this project is
 

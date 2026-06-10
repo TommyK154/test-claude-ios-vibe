@@ -26,7 +26,8 @@ function loadTestable() {
     " ROUTE_ELLIPSE_SLACK_NM: ROUTE_ELLIPSE_SLACK_NM," +
     " routePlausibility: routePlausibility," +
     " FLIGHT_DEFAULTS: FLIGHT_DEFAULTS," +
-    " flightSessionStep: flightSessionStep };"
+    " flightSessionStep: flightSessionStep," +
+    " maintStatus: maintStatus };"
   );
   return factory();
 }

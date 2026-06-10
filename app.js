@@ -152,6 +152,23 @@
         return { next: { phase: "airborne", count: 0, pending: null }, event: null };
       }
 
+      // Maintenance-hours arithmetic for the watchlist ledger.
+      // usedHrs = hours logged by the app + the user's offset (hours the
+      // browser never saw — the honest correction knob for a browser-only
+      // tracker). level: ok < 90% ≤ warn < 100% ≤ alert of intervalHrs.
+      function maintStatus(loggedHrs, offsetHrs, intervalHrs) {
+        var used = (loggedHrs || 0) + (offsetHrs || 0);
+        if (intervalHrs == null || !(intervalHrs > 0)) {
+          return { usedHrs: used, pct: null, level: "none" };
+        }
+        var pct = used / intervalHrs;
+        return {
+          usedHrs: used,
+          pct: pct,
+          level: pct >= 1 ? "alert" : pct >= 0.9 ? "warn" : "ok"
+        };
+      }
+
       // ==== TESTABLE-PURE-END ====
 
       // ==================== PRESETS · AIRPORTS ====================
@@ -3280,6 +3297,29 @@
         return h ? h + "H " + ("0" + m).slice(-2) + "M" : m + "M";
       }
 
+      // Hours ledger + maintenance + alert-airport mini-form rendered at
+      // the top of the expanded flight list.
+      function watchMaintHtml(w, flights) {
+        var ms = 0;
+        (flights || []).forEach(function (f) { if (f.durationMs) ms += f.durationMs; });
+        var loggedHrs = ms / 3600000;
+        var st = maintStatus(loggedHrs, w.hoursOffset || 0, w.maintIntervalHrs);
+        var summary = "LOGGED " + loggedHrs.toFixed(1) + "H";
+        if (w.hoursOffset) summary += " + OFFSET " + w.hoursOffset + "H = " + st.usedHrs.toFixed(1) + "H";
+        if (st.pct != null) {
+          summary += " · DUE AT " + w.maintIntervalHrs + "H (" + Math.round(st.pct * 100) + "%)";
+        }
+        return '<div class="watch-maint">' +
+          '<div class="watch-maint-summary lvl-' + st.level + '">' + escapeHtml(summary) + '</div>' +
+          '<div class="watch-maint-form">' +
+            '<input class="wm-offset" inputmode="decimal" placeholder="OFFSET HRS" value="' + (w.hoursOffset != null ? escapeHtml(String(w.hoursOffset)) : "") + '">' +
+            '<input class="wm-interval" inputmode="decimal" placeholder="DUE AT HRS" value="' + (w.maintIntervalHrs != null ? escapeHtml(String(w.maintIntervalHrs)) : "") + '">' +
+            '<input class="wm-airport" autocapitalize="characters" placeholder="ALERT ICAO" value="' + (w.alertAirport ? escapeHtml(w.alertAirport) : "") + '">' +
+            '<button type="button" class="wm-save" data-hex="' + w.hex + '">SET</button>' +
+          '</div>' +
+        '</div>';
+      }
+
       // Async fill of the expanded flight list (IndexedDB read).
       function fillWatchFlights(hex) {
         var holder = document.querySelector('.watch-flights[data-hex="' + hex + '"]');
@@ -3287,12 +3327,14 @@
         flightDbFlightsByHex(hex).then(function (flights) {
           var cur = document.querySelector('.watch-flights[data-hex="' + hex + '"]');
           if (!cur) return; // panel re-rendered/collapsed meanwhile
+          var w = state.watchlist[findWatch(hex)] || {};
+          var head = watchMaintHtml(w, flights);
           if (!flights || !flights.length) {
-            cur.innerHTML = '<div class="watch-empty">NO FLIGHTS LOGGED YET — LOGGING RUNS WHILE THE APP IS OPEN</div>';
+            cur.innerHTML = head + '<div class="watch-empty">NO FLIGHTS LOGGED YET — LOGGING RUNS WHILE THE APP IS OPEN</div>';
             return;
           }
           flights.sort(function (a, b) { return b.startAt - a.startAt; });
-          cur.innerHTML = flights.map(function (f) {
+          cur.innerHTML = head + flights.map(function (f) {
             var d = new Date(f.startAt);
             var date = d.getUTCFullYear() + "-" +
               ("0" + (d.getUTCMonth() + 1)).slice(-2) + "-" +
@@ -3317,6 +3359,10 @@
       function renderWatchRows() {
         var box = document.getElementById("watchListRows");
         if (!box) return;
+        // Don't clobber an in-progress edit (offset/interval/airport inputs)
+        // with the periodic live refresh.
+        if (box.contains(document.activeElement) &&
+            document.activeElement.tagName === "INPUT") return;
         if (!state.watchlist.length) {
           box.innerHTML = '<div class="watch-empty">NO PLANES WATCHED YET</div>';
           return;
@@ -3524,9 +3570,11 @@
           openFlight(sess, hex, n, ev);
           notifyFlightEvent(hex, n, ev);
         } else if (ev && ev.type === "landing" && sess.flightIdP) {
-          closeFlight(sess, ev, "landing");
+          closeFlight(sess, ev, "landing").then(function () { checkMaintenance(hex); });
           notifyFlightEvent(hex, n, ev);
         }
+        // Ground-crew INBOUND pre-alert rides the same per-sample feed.
+        maybeInboundAlert(state.watchlist[findWatch(hex)] || {}, n);
         // Log the sample while a flight is open (including the final
         // ground roll — useful for block-time analysis).
         if (sess.flightIdP) {
@@ -3569,8 +3617,8 @@
         var p = sess.flightIdP;
         var lastT = sess.lastT;
         sess.flightIdP = null;
-        if (!p) return;
-        p.then(function (id) {
+        if (!p) return Promise.resolve();
+        return p.then(function (id) {
           if (id == null) return;
           return openFlightDb().then(function (db) {
             return new Promise(function (resolve) {
@@ -3598,13 +3646,58 @@
 
       // In-app alert banner for takeoff / landing events. (Web/system
       // notifications are deferred to the PWA phase per project plan.)
+      // When the entry has an alertAirport, only events AT that airport
+      // banner (ground-crew mode) — everything still logs regardless.
       function notifyFlightEvent(hex, n, ev) {
         var w = state.watchlist[findWatch(hex)] || {};
         var who = w.reg || w.label || (n && n.callsign) || hex.toUpperCase();
         var apt = ev.lat != null ? nearestAirport(ev.lat, ev.lon, 5) : null;
+        if (w.alertAirport) {
+          var code = apt ? (apt.icao || apt.iata || "").toUpperCase() : "";
+          if (code !== w.alertAirport.toUpperCase()) return;
+        }
         var aptTxt = apt ? " · " + (apt.icao || apt.iata) : "";
         var verb = ev.type === "landing" ? "LANDED" : ev.type === "takeoff" ? "DEPARTED" : "IN FLIGHT";
         showWatchAlert(who + " " + verb + aptTxt);
+      }
+
+      // INBOUND pre-alert for ground crews: a watched plane descending
+      // within 20 NM of its alertAirport banners once per approach
+      // (30 min re-arm).
+      function maybeInboundAlert(w, n) {
+        if (!w.alertAirport || n.onGround || n.lat == null) return;
+        var apt = buildAirportIndex().byIcao[w.alertAirport.toUpperCase()];
+        if (!apt || typeof apt.lat !== "number") return;
+        var d = haversineNm(n.lat, n.lon, apt.lat, apt.lon);
+        if (d > 20) return;
+        var descendingish = (n.vertRate != null && n.vertRate < -100) ||
+          (n.altFt != null && n.altFt < 6000);
+        if (!descendingish) return;
+        var now = Date.now();
+        if (w.inboundAlertedAt && now - w.inboundAlertedAt < 30 * 60 * 1000) return;
+        w.inboundAlertedAt = now;
+        saveWatchlist();
+        showWatchAlert((w.reg || w.label || w.hex.toUpperCase()) +
+          " INBOUND " + w.alertAirport.toUpperCase() + " · " + Math.round(d) + " NM");
+      }
+
+      // Re-tally the hours ledger after a flight closes; banner once per
+      // level per session when crossing 90% / 100% of the interval.
+      var __maintAlerted = {};
+      function checkMaintenance(hex) {
+        var w = state.watchlist[findWatch(hex)];
+        if (!w || !w.maintIntervalHrs) return;
+        flightDbFlightsByHex(hex).then(function (flights) {
+          var ms = 0;
+          (flights || []).forEach(function (f) { if (f.durationMs) ms += f.durationMs; });
+          var st = maintStatus(ms / 3600000, w.hoursOffset || 0, w.maintIntervalHrs);
+          if ((st.level === "warn" || st.level === "alert") && __maintAlerted[hex] !== st.level) {
+            __maintAlerted[hex] = st.level;
+            showWatchAlert((w.reg || w.hex.toUpperCase()) +
+              (st.level === "alert" ? " MAINTENANCE DUE" : " MAINTENANCE SOON") +
+              " · " + st.usedHrs.toFixed(1) + "H / " + w.maintIntervalHrs + "H");
+          }
+        }).catch(function () {});
       }
       var __watchAlertTimer = null;
       function showWatchAlert(text) {
@@ -3704,6 +3797,23 @@
           }
           var exp = e.target.closest ? e.target.closest(".flight-export") : null;
           if (exp) { exportFlightCsv(parseInt(exp.getAttribute("data-id"), 10)); return; }
+          var wmSave = e.target.closest ? e.target.closest(".wm-save") : null;
+          if (wmSave) {
+            var wmHex = wmSave.getAttribute("data-hex");
+            var entry = state.watchlist[findWatch(wmHex)];
+            var form = wmSave.closest(".watch-maint-form");
+            if (entry && form) {
+              var off = parseFloat(form.querySelector(".wm-offset").value);
+              var ivl = parseFloat(form.querySelector(".wm-interval").value);
+              var apt = (form.querySelector(".wm-airport").value || "").trim().toUpperCase();
+              entry.hoursOffset = isFinite(off) ? off : null;
+              entry.maintIntervalHrs = isFinite(ivl) && ivl > 0 ? ivl : null;
+              entry.alertAirport = apt || null;
+              saveWatchlist();
+              fillWatchFlights(wmHex);
+            }
+            return;
+          }
           var del = e.target.closest ? e.target.closest(".flight-del") : null;
           if (del) {
             flightDbDelete(parseInt(del.getAttribute("data-id"), 10)).then(function () {

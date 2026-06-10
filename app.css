@@ -238,6 +238,38 @@
     .flight-export { color: var(--accent); border-color: var(--accent); }
     .flight-del { color: var(--muted); }
     .flight-del:active { color: var(--danger); border-color: var(--danger); }
+    /* Hours ledger + maintenance mini-form at the top of the flight log. */
+    .watch-maint { display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px; border-bottom: 1px dashed var(--border-2); }
+    .watch-maint-summary { font-weight: 700; color: var(--text); }
+    .watch-maint-summary.lvl-warn { color: var(--warn); }
+    .watch-maint-summary.lvl-alert { color: var(--danger); }
+    .watch-maint-form { display: flex; gap: 6px; flex-wrap: wrap; }
+    .watch-maint-form input {
+      flex: 1;
+      min-width: 70px;
+      min-height: 44px;
+      padding: 0 8px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .wm-save {
+      min-width: 44px;
+      min-height: 44px;
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
 
     .btn-danger {
       min-height: 44px;

@@ -111,6 +111,17 @@ check("no event", fg.events.length === 0);
 check("ground phase", fg.state.phase === "ground");
 
 // ---------------------------------------------------------------------
+console.log("Maintenance-hours arithmetic:");
+var maint = lib.maintStatus;
+var m1 = maint(12.5, 1500, 1550);
+check("logged+offset sums", Math.abs(m1.usedHrs - 1512.5) < 1e-9, String(m1.usedHrs));
+check("under 90% is ok", maint(0, 1300, 1550).level === "ok");
+check("90% boundary warns", maint(0, 1395, 1550).level === "warn");
+check("at/over interval alerts", maint(10, 1545, 1550).level === "alert");
+check("no interval -> level none, no pct", maint(5, 0, null).level === "none" && maint(5, 0, null).pct === null);
+check("zero interval -> none", maint(5, 0, 0).level === "none");
+
+// ---------------------------------------------------------------------
 if (failures) {
   console.error("\n" + failures + " assertion(s) failed");
   process.exit(1);
