@@ -1,0 +1,19 @@
+# Never commit credentials. This app is public on GitHub Pages; any secret
+# committed here is world-readable. Users supply their aisstream key at
+# runtime; it lives only in their browser localStorage, never in the repo.
+
+.env
+.env.*
+*.key
+*.pem
+credentials
+credentials.*
+secrets
+secrets.*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
