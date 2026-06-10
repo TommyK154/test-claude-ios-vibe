@@ -375,7 +375,13 @@ data; the concentric rings are pure distance references (no clip-path).
     exceeds `routeLength × 1.25 + 250 NM`. Catches UAL2192
     everywhere and QXE2316 from mid-leg onward; provably keeps
     correct filings (incl. weather deviations) visible.
-    **Render-time suppression ships in the next change.**
+    **SHIPPED at render time**: the magenta route line is
+    suppressed and the card block renders muted with an
+    `UNVERIFIED` flag when the check fails. Routes are also no
+    longer cached forever — 30 min TTL for good lookups, 5 min
+    for none/error — and `pollSelected` re-fetches whenever the
+    broadcast callsign changes (fetchRoute is TTL-gated, so the
+    per-poll call is cheap).
   - **Route diagnostics (shipped)**: `state.routeDiagLog` ring
     buffer records every route fetch (with hex), every
     mid-selection callsign change (the stale-transponder signal),
@@ -396,8 +402,11 @@ data; the concentric rings are pure distance references (no clip-path).
     Apple uses) — ground truth but needs a new dependency. Out
     of scope for this project.
 
-  Deferred. Geography cross-check is the leading candidate for
-  the next PR in this area.
+  Remaining gap: a wrong-but-nearby filing during the phase of
+  flight where it is still geometrically plausible (QXE2316's
+  early leg). Not detectable by geometry; the routeDiagLog
+  evidence trail (tap the route block to copy) is how those get
+  classified when they recur.
 - **OpenSky cross-flight waypoints**: `fetchHistoricalTrack` uses
   `opensky-network.org/api/tracks/all?icao24=...&time=0` which occasionally
   returns waypoints from *prior flights* of the same ICAO24 (same hex,

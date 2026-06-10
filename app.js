@@ -767,11 +767,24 @@
         if (state.routeDiagLog.length > 20) state.routeDiagLog.shift();
       }
 
+      // Cache freshness: a session used to cache routes forever, so a
+      // stale filing (or an early "none"/"error" while adsbdb hiccuped)
+      // stuck for hours. Successful lookups stay fresh for 30 min;
+      // negative/error results retry after 5 min.
+      var ROUTE_TTL_OK_MS = 30 * 60 * 1000;
+      var ROUTE_TTL_SAD_MS = 5 * 60 * 1000;
+      function routeCacheFresh(r) {
+        if (!r) return false;
+        if (r.state === "loading") return true;
+        var age = Date.now() - (r.fetchedAt || 0);
+        return age < (r.state === "ok" ? ROUTE_TTL_OK_MS : ROUTE_TTL_SAD_MS);
+      }
+
       function fetchRoute(callsign) {
         if (!callsign) return;
         var c = callsign.trim().toUpperCase();
         if (!c || c.length < 3) return;
-        if (state.routes[c]) return;
+        if (routeCacheFresh(state.routes[c])) return;
         state.routes[c] = { state: "loading" };
         var hexAtFetch = state.selectedHex || "";
         var base = "https://api.adsbdb.com/v0/callsign/" + encodeURIComponent(c);
@@ -787,11 +800,12 @@
           } else {
             state.routes[c] = { state: "none" };
           }
+          state.routes[c].fetchedAt = Date.now();
           routeDiagPush({ ev: "fetch", callsign: c, hex: hexAtFetch, result: state.routes[c].state, route: state.routes[c] });
           renderSelected();
           renderOverlays();
         }).catch(function () {
-          state.routes[c] = { state: "error" };
+          state.routes[c] = { state: "error", fetchedAt: Date.now() };
           routeDiagPush({ ev: "fetch", callsign: c, hex: hexAtFetch, result: "error" });
         });
       }
@@ -889,7 +903,12 @@
         }
 
         var route = state.routes[(sel.callsign || "").toUpperCase()];
-        if (route && route.state === "ok" && route.origin.lat && route.destination.lat) {
+        // Ellipse cross-check (see routePlausibility): a filed route the
+        // aircraft cannot geometrically be flying is suppressed from the
+        // map; the card shows it flagged UNVERIFIED instead of hiding it.
+        var routeOk = route && route.state === "ok" &&
+          routePlausibility(route, sel.lat, sel.lon).ok;
+        if (routeOk && route.origin.lat && route.destination.lat) {
           var cur = project({ lat: sel.lat, lon: sel.lon });
           var org = project({ lat: route.origin.lat, lon: route.origin.lon });
           var dst = project({ lat: route.destination.lat, lon: route.destination.lon });
@@ -2700,10 +2719,17 @@
         }
         var oCode = escapeHtml(r.origin.iata || r.origin.icao || "");
         var dCode = escapeHtml(r.destination.iata || r.destination.icao || "");
-        return '<div class="sel-route" title="Tap to copy route diagnostic">' +
+        // A filing that fails the ellipse cross-check is shown flagged, not
+        // hidden: the user learns the broadcast callsign's filed route is
+        // not this flight, and the tap-to-copy diag target stays alive.
+        var implausible = sel && sel.lat != null &&
+          !routePlausibility(r, sel.lat, sel.lon).ok;
+        return '<div class="sel-route' + (implausible ? ' sel-route-unverified' : '') +
+          '" title="Tap to copy route diagnostic">' +
           '<span class="sel-airport">' + oCode + '</span>' +
           '<span class="sel-arrow">→</span>' +
           '<span class="sel-airport">' + dCode + '</span>' +
+          (implausible ? '<span class="sel-route-flag">UNVERIFIED</span>' : '') +
           '</div>';
       }
 
@@ -3108,7 +3134,9 @@
           // Mark pollSelected as authoritative for the next 6 s so bulk-fetch
           // and accumulateTracks don't write a competing position.
           state.lastPollSelectedAt = Date.now();
-          if (base2.callsign && !state.routes[base2.callsign.toUpperCase()]) fetchRoute(base2.callsign);
+          // fetchRoute is TTL-gated internally, so calling it every poll is
+          // cheap; this also re-fetches when the broadcast callsign changes.
+          if (base2.callsign) fetchRoute(base2.callsign);
           // Append to track history keyed by hex (works regardless of bbox).
           var tkey = hex.toLowerCase();
           var t = state.tracks[tkey] || (state.tracks[tkey] = []);

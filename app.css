@@ -1122,6 +1122,20 @@
       letter-spacing: 0.08em;
     }
     .sel-route .sel-arrow { color: #ff4ddb; font-weight: 700; }
+    /* Filed route fails the geography cross-check (routePlausibility):
+       shown muted + flagged instead of confidently wrong. */
+    .sel-route-unverified .sel-airport,
+    .sel-route-unverified .sel-arrow { color: var(--muted); }
+    .sel-route-flag {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--warn);
+      border: 1px solid currentColor;
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
     .sel-route-empty {
       color: var(--muted);
       font-size: 11px;
