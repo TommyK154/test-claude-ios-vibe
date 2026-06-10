@@ -3554,10 +3554,15 @@
       // endpoints come back empty but the input is hex-shaped (or a hit
       // returned a hex without a position), fall back to OpenSky's
       // tracks/all for a last-seen position.
-      function findAircraft(query) {
+      function findAircraft(query, onProgress) {
         var q = (query || "").toString().trim().toUpperCase();
         if (!q) return Promise.resolve({ status: "not-found" });
         var isHex = /^[0-9A-F]{6}$/.test(q);
+        // Heuristic: anything that contains a letter AND a digit (or a hyphen)
+        // and isn't a pure 6-hex is "reg-shaped" — N738C, G-EZBA, C-FXYZ, etc.
+        // We use this only to phrase the error message; the adsbdb resolver
+        // is tried regardless so a non-standard reg shape still resolves.
+        var looksLikeReg = !isHex && /[A-Z]/.test(q) && /[0-9-]/.test(q);
 
         function readsbProbe(path) {
           var urls = [
@@ -3594,20 +3599,47 @@
             var planes = normalizeReadsb({ ac: [withPos] });
             if (planes.length) return { status: "live", plane: planes[0] };
           }
-          // No usable live position — try OpenSky last-seen via known hex.
+          // No usable live position. Three fallback paths, in order:
+          //   (a) readsb returned a hex but no position → OpenSky last-seen.
+          //   (b) query was hex-shaped → OpenSky last-seen directly.
+          //   (c) query was reg-shaped → adsbdb reg→hex → OpenSky last-seen.
+          // For pure callsigns (UAL822, AAL101) there's no honest fallback —
+          // callsigns rotate between airframes, so "last known position" is
+          // ambiguous. Return not-found with looksLikeReg=false so the caller
+          // can phrase a more useful error.
+          if (typeof onProgress === "function") {
+            onProgress("Not broadcasting · checking historical track…");
+          }
           var fallbackHex = (anyHex && anyHex.hex) ? anyHex.hex.toLowerCase()
                           : (isHex ? q.toLowerCase() : null);
-          if (!fallbackHex) return { status: "not-found" };
-          return fetchLastSeenFromOpenSky(fallbackHex).then(function (last) {
-            if (!last) return { status: "not-found" };
-            // Augment last-seen with any callsign/reg/type we picked up
-            // from the readsb response, even if the position was missing.
-            if (anyHex) {
-              if (!last.callsign && anyHex.flight) last.callsign = anyHex.flight.toString().trim();
-              if (anyHex.r) last.registration = anyHex.r;
-              if (anyHex.t) last.type = anyHex.t;
+
+          function staleFromHex(hex, extra) {
+            return fetchLastSeenFromOpenSky(hex).then(function (last) {
+              if (!last) return { status: "not-found", knownHex: hex, looksLikeReg: looksLikeReg };
+              if (extra) {
+                if (extra.registration) last.registration = extra.registration;
+                if (extra.type) last.type = extra.type;
+                if (!last.callsign && extra.callsign) last.callsign = extra.callsign;
+              }
+              return { status: "stale", plane: last };
+            });
+          }
+
+          if (fallbackHex) {
+            var extra = anyHex ? {
+              callsign: (anyHex.flight || "").toString().trim(),
+              registration: anyHex.r || "",
+              type: anyHex.t || ""
+            } : null;
+            return staleFromHex(fallbackHex, extra);
+          }
+
+          // (c) reg→hex via adsbdb. Cheap, tolerates 404 silently.
+          return lookupHexViaAdsbdb(q).then(function (info) {
+            if (!info || !info.hex) {
+              return { status: "not-found", looksLikeReg: looksLikeReg };
             }
-            return { status: "stale", plane: last };
+            return staleFromHex(info.hex, info);
           });
         });
       }
@@ -3645,6 +3677,28 @@
             }
           }
           return null;
+        }).catch(function () { return null; });
+      }
+
+      // Reg → hex resolver via adsbdb.com. Used when /v2/reg returns nothing
+      // (aircraft not currently broadcasting) so we still get a hex we can
+      // feed to OpenSky's last-seen lookup. Returns { hex, registration, type }
+      // or null. Tolerates 404 (which is the common "not a known reg") and
+      // any other failure as null — caller treats that as "not found".
+      function lookupHexViaAdsbdb(query) {
+        if (!query) return Promise.resolve(null);
+        var base = "https://api.adsbdb.com/v0/aircraft/" + encodeURIComponent(query);
+        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
+        return tryPhotoUrls(urls, 0).then(function (data) {
+          var a = data && data.response && (data.response.aircraft || data.response);
+          if (!a) return null;
+          var hex = a.mode_s || a.icao24 || a.hex || "";
+          if (!hex) return null;
+          return {
+            hex: hex.toString().toLowerCase(),
+            registration: a.registration || "",
+            type: a.icao_type || a.type || ""
+          };
         }).catch(function () { return null; });
       }
 
@@ -3696,10 +3750,22 @@
           if (q.length > 32) { setFindStatus("Query too long.", "err"); return; }
           setFindStatus("Searching " + q + "…");
           submit.disabled = true;
-          findAircraft(q).then(function (result) {
+          findAircraft(q, function (progress) { setFindStatus(progress); }).then(function (result) {
             submit.disabled = false;
             if (!result || result.status === "not-found") {
-              setFindStatus("No aircraft found matching " + q + ".", "err");
+              // Phrase the error around why we couldn't fall back. A callsign
+              // query (UAL822, AAL101) failing is structurally different from
+              // a registration query (N738C) failing — they need different
+              // user guidance.
+              var msg;
+              if (result && result.knownHex) {
+                msg = "Found aircraft (hex " + result.knownHex.toUpperCase() + ") but no recent OpenSky track. Try again later.";
+              } else if (result && result.looksLikeReg) {
+                msg = "No aircraft matching " + q + " — not currently broadcasting and not in adsbdb's registry.";
+              } else {
+                msg = "No aircraft found for " + q + ". Callsigns rotate between flights; try the tail number or ICAO24 hex.";
+              }
+              setFindStatus(msg, "err");
               return;
             }
             pushRecent(q);
