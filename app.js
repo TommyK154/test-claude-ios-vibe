@@ -377,6 +377,20 @@
         historicalFetched: {},
         routes: {},
         routeDiagLog: [],  // ring buffer (cap 20) of route fetches / callsign changes / plausibility evals — tap the route block on the card to copy
+        // Specific-plane tracker: persisted watchlist of aircraft the user
+        // cares about. Entries {hex, reg, label, addedAt}; cap WATCH_MAX.
+        watchlist: (function () {
+          try {
+            var w = JSON.parse(localStorage.getItem("watch.list") || "[]");
+            if (Array.isArray(w)) {
+              return w.filter(function (e) {
+                return e && typeof e.hex === "string" && /^[0-9a-f]{6}$/.test(e.hex);
+              }).slice(0, 10);
+            }
+          } catch (e) {}
+          return [];
+        })(),
+        watchLive: {}, // runtime-only: hex -> latest fetched sample for watched planes
         selectedHex: null,
         selectedMmsi: null,
         selectedPlaneData: null, // authoritative render source for the selected plane (kept fresh by bulk fetch + pollSelected)
@@ -502,6 +516,13 @@
           var tgt = e.target && e.target.closest ? e.target : null;
           var btn = tgt && tgt.closest(".sel-close");
           if (btn) { e.preventDefault(); e.stopPropagation(); deselectAll(); return; }
+          var watchBtn = tgt && tgt.closest(".sel-watch");
+          if (watchBtn) {
+            e.preventDefault(); e.stopPropagation();
+            var sp = getSelectedPlane();
+            toggleWatch(watchBtn.getAttribute("data-hex"), sp && sp.registration ? String(sp.registration).toUpperCase() : "");
+            return;
+          }
           // Route block tap-to-copy (mirrors the tile-status diagnostic):
           // surfaces the routeDiagLog evidence trail for misrouting reports.
           var routeEl = tgt && tgt.closest(".sel-route");
@@ -1881,6 +1902,22 @@
             ehalo.appendChild(anim1); ehalo.appendChild(anim2);
             g.insertBefore(ehalo, g.firstChild);
           }
+          // Watched planes: interest semantic → halo channel per the
+          // two-channel rule (never the fill). Thin dashed accent ring,
+          // visually distinct from the selected plane's solid gold halo;
+          // pushed outside the gold halo when both apply.
+          if (p.hex && isWatched(p.hex)) {
+            var wring = document.createElementNS(svgns, "circle");
+            wring.setAttribute("cx", "0");
+            wring.setAttribute("cy", "0");
+            wring.setAttribute("r", isSel ? "9.2" : "6.5");
+            wring.setAttribute("fill", "none");
+            wring.setAttribute("stroke", "var(--accent)");
+            wring.setAttribute("stroke-width", "0.6");
+            wring.setAttribute("stroke-dasharray", "1.6 1.6");
+            wring.setAttribute("opacity", "0.85");
+            g.insertBefore(wring, g.firstChild);
+          }
           if (isSel) {
             var halo = document.createElementNS(svgns, "circle");
             halo.setAttribute("cx", "0");
@@ -2481,10 +2518,14 @@
                  (loading ? '<span class="ld-dot"></span>' : '') +
                  '<span class="ld-v">' + escapeHtml(value) + '</span></span>';
         }
+        var watched = isWatched(hex);
         return '<div class="sel-top-row">' +
           '<div class="loading-row">' +
             seg("TRACK", trackStatus.text, trackStatus.loading) +
           '</div>' +
+          '<button type="button" class="sel-watch' + (watched ? " on" : "") + '" data-hex="' + escapeHtml(hex) + '">' +
+            (watched ? "★ WATCHED" : "☆ WATCH") +
+          '</button>' +
           CLOSE_BUTTON_HTML +
         '</div>';
       }
@@ -3019,6 +3060,160 @@
         });
       }
 
+      // ==================== PLANE WATCHLIST ====================
+      // Phase 1 of the specific-plane tracker (browser-only): persistence
+      // + UI. Live polling of watched planes, flight logging, CSV export
+      // and alerts build on top of this.
+
+      var WATCH_MAX = 10; // request-budget cap, see the watch poller design
+
+      function saveWatchlist() {
+        try { localStorage.setItem("watch.list", JSON.stringify(state.watchlist)); } catch (e) {}
+      }
+      function findWatch(hex) {
+        hex = (hex || "").toLowerCase();
+        for (var i = 0; i < state.watchlist.length; i++) {
+          if (state.watchlist[i].hex === hex) return i;
+        }
+        return -1;
+      }
+      function isWatched(hex) { return findWatch(hex) !== -1; }
+
+      function addWatch(hex, reg, label) {
+        hex = (hex || "").toLowerCase().trim();
+        if (!/^[0-9a-f]{6}$/.test(hex)) return { ok: false, msg: "NOT A VALID HEX" };
+        if (findWatch(hex) !== -1) return { ok: true, msg: "ALREADY WATCHED" };
+        if (state.watchlist.length >= WATCH_MAX) {
+          return { ok: false, msg: "WATCHLIST FULL · " + WATCH_MAX + " MAX" };
+        }
+        state.watchlist.push({ hex: hex, reg: reg || "", label: label || "", addedAt: Date.now() });
+        saveWatchlist();
+        renderWatchRows();
+        renderRadar();
+        renderSelected();
+        return { ok: true, msg: "ADDED" };
+      }
+
+      function removeWatch(hex) {
+        var i = findWatch(hex);
+        if (i === -1) return;
+        state.watchlist.splice(i, 1);
+        delete state.watchLive[(hex || "").toLowerCase()];
+        saveWatchlist();
+        renderWatchRows();
+        renderRadar();
+        renderSelected();
+      }
+
+      function toggleWatch(hex, reg) {
+        if (isWatched(hex)) removeWatch(hex);
+        else addWatch(hex, reg);
+      }
+
+      // Latest known sample for a watched plane: prefer the dedicated
+      // watch-poll result, fall back to the current radar snapshot.
+      function watchSample(hex) {
+        hex = (hex || "").toLowerCase();
+        if (state.watchLive[hex]) return state.watchLive[hex];
+        if (state.selectedHex === hex && state.selectedPlaneData) return state.selectedPlaneData;
+        for (var i = 0; i < state.planes.length; i++) {
+          if (state.planes[i].hex === hex) return state.planes[i];
+        }
+        return null;
+      }
+
+      // Resolve a user-typed registration (N738C) or hex (a12710) to a
+      // mode-S hex via adsbdb's aircraft endpoint, then add it. Status
+      // text lands in #watchStatus.
+      function resolveAndWatch(input, statusEl) {
+        var q = (input || "").trim();
+        function status(msg, cls) {
+          if (statusEl) { statusEl.textContent = msg; statusEl.className = "ais-status" + (cls ? " " + cls : ""); }
+        }
+        if (!q) return;
+        if (/^[0-9a-f]{6}$/i.test(q)) {
+          var r = addWatch(q.toLowerCase(), "");
+          status(r.ok ? "WATCHING " + q.toUpperCase() + (r.msg === "ALREADY WATCHED" ? " (ALREADY ON LIST)" : "") : r.msg, r.ok ? "ok" : "warn");
+          return;
+        }
+        status("LOOKING UP " + q.toUpperCase() + "…");
+        var base = "https://api.adsbdb.com/v0/aircraft/" + encodeURIComponent(q.toUpperCase());
+        var urls = [base, viaCorsProxy(base), viaAllOrigins(base)];
+        tryPhotoUrls(urls, 0).then(function (data) {
+          var a = data && data.response && (data.response.aircraft || data.response);
+          var hex = a && (a.mode_s || a.modeS || a.icao) ? String(a.mode_s || a.modeS || a.icao).toLowerCase() : "";
+          if (!/^[0-9a-f]{6}$/.test(hex)) {
+            status("NO AIRCRAFT FOUND FOR " + q.toUpperCase(), "warn");
+            return;
+          }
+          var reg = (a.registration || q).toString().toUpperCase();
+          var r2 = addWatch(hex, reg);
+          status(r2.ok ? "WATCHING " + reg + " · " + hex.toUpperCase() : r2.msg, r2.ok ? "ok" : "warn");
+        }).catch(function () {
+          status("LOOKUP FAILED · TRY THE 6-CHAR HEX INSTEAD", "warn");
+        });
+      }
+
+      function renderWatchRows() {
+        var box = document.getElementById("watchListRows");
+        if (!box) return;
+        if (!state.watchlist.length) {
+          box.innerHTML = '<div class="watch-empty">NO PLANES WATCHED YET</div>';
+          return;
+        }
+        var html = state.watchlist.map(function (w) {
+          var s = watchSample(w.hex);
+          var name = escapeHtml(w.reg || w.label || w.hex.toUpperCase());
+          var sub;
+          if (s && s.lat != null) {
+            sub = (s.onGround ? "GROUND" : (s.altFt != null ? Math.round(s.altFt / 100) * 100 + " FT" : "ALT —")) +
+              " · " + (s.gsKt != null ? Math.round(s.gsKt) + " KT" : "SPD —");
+          } else {
+            sub = "NOT SEEN YET";
+          }
+          return '<div class="watch-row" data-hex="' + w.hex + '">' +
+            '<button type="button" class="watch-go" data-hex="' + w.hex + '"' + (s && s.lat != null ? '' : ' disabled') + '>' +
+              '<span class="watch-name">' + name + '</span>' +
+              '<span class="watch-sub">' + escapeHtml(sub) + '</span>' +
+            '</button>' +
+            '<button type="button" class="watch-remove" data-hex="' + w.hex + '" aria-label="Remove">✕</button>' +
+          '</div>';
+        }).join("");
+        box.innerHTML = html;
+      }
+
+      function setupWatchlistUi() {
+        var input = document.getElementById("watchAddInput");
+        var btn = document.getElementById("watchAddBtn");
+        var statusEl = document.getElementById("watchStatus");
+        var box = document.getElementById("watchListRows");
+        if (!input || !btn || !box) return;
+        btn.addEventListener("click", function () {
+          resolveAndWatch(input.value, statusEl);
+          input.value = "";
+        });
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { resolveAndWatch(input.value, statusEl); input.value = ""; }
+        });
+        box.addEventListener("click", function (e) {
+          var rm = e.target.closest ? e.target.closest(".watch-remove") : null;
+          if (rm) { removeWatch(rm.getAttribute("data-hex")); return; }
+          var go = e.target.closest ? e.target.closest(".watch-go") : null;
+          if (go && !go.disabled) {
+            var hex = go.getAttribute("data-hex");
+            var s = watchSample(hex);
+            if (s && s.lat != null) {
+              state.center = { lat: s.lat, lon: s.lon, label: "Watched plane", id: "custom" };
+              syncCoordInputs();
+              markActivePreset();
+              onCenterChanged();
+              selectPlane(hex);
+            }
+          }
+        });
+        renderWatchRows();
+      }
+
       function startSelectedPoll(hex) {
         stopSelectedPoll();
         if (!hex) return;
@@ -3158,6 +3353,7 @@
         renderShips();
         renderList();
         renderSelected();
+        renderWatchRows(); // keep settings-panel watch rows live
       }
 
       // Event wiring
@@ -4208,6 +4404,7 @@
       setupAirportSearch();
       setupRadarDrag();
       setupSettings();
+      setupWatchlistUi();
       setupLeadPicker();
       setupMapLayerPicker();
       setupTileStatusCopy();

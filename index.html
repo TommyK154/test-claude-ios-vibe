@@ -44,6 +44,16 @@
         <div id="aisDiag" class="ais-diag" hidden></div>
         <p class="setting-help ais-diag-hint">If you see messages flowing but no ship markers, the subscribed bounding box may not match your map center — pan to a busy port (e.g. Rotterdam, Singapore, Houston) and wait ~30 s. aisstream's free tier only streams the bbox you subscribed to.</p>
       </div>
+      <div class="setting-block">
+        <label for="watchAddInput">Plane watchlist <span class="muted">(track specific aircraft)</span></label>
+        <p class="setting-help">Add up to 10 aircraft by registration (e.g. N738C) or 6-character ICAO hex. Watched planes show a dashed ring on the radar. You can also tap WATCH on any selected plane's card. Tap a row to jump to that plane.</p>
+        <div class="setting-row">
+          <input type="text" id="watchAddInput" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="Registration or hex">
+          <button type="button" id="watchAddBtn" class="btn-primary">ADD</button>
+        </div>
+        <div id="watchStatus" class="ais-status"></div>
+        <div id="watchListRows" class="watch-rows"></div>
+      </div>
     </div>
     <div class="controls" id="controlsPanel">
       <button type="button" class="controls-header" id="controlsToggle" aria-expanded="true">

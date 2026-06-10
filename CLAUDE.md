@@ -76,6 +76,14 @@ ship UI is hidden and only ADS-B is shown.
   from "broken subscription" from "parse path dropping frames".
 - `state.selectedHex` / `state.selectedMmsi` — current selection (mutually
   exclusive; changing one clears the other + `state.selectedPlaneData`).
+- `state.watchlist` — specific-plane tracker entries `{hex, reg, label,
+  addedAt}`, cap 10 (`WATCH_MAX`), persisted to localStorage `watch.list`.
+  Watched planes render a thin dashed accent ring (halo channel — never
+  the fill, per the two-channel rule). Managed by `addWatch` /
+  `removeWatch` / `toggleWatch`; UI = WATCH button on the selected card +
+  the settings-panel watchlist block (`setupWatchlistUi`).
+- `state.watchLive` — runtime-only hex → latest fetched sample for
+  watched planes (fed by the watch poller).
 
 ### Gesture invariants
 

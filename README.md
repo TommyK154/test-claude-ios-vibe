@@ -64,6 +64,12 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   back to 30 s automatically when streaming through CORS proxies or
   OpenSky to respect tighter rate limits. Current rate is shown in the
   status bar.
+- **Plane watchlist** — save up to 10 specific aircraft (by registration
+  or ICAO hex, or via the WATCH button on a selected plane's card).
+  Watched planes wear a dashed ring on the radar; the settings panel
+  lists them with live altitude/speed and tap-to-jump. Foundation for
+  flight logging, CSV tracklog export, and takeoff/landing alerts
+  (in progress — see Future Work).
 - **Contact-list filter & sort.** The list under the radar has filter
   chips (ALL · AIR · GROUND · MIL · NOTABLE · ⚠) and sort chips
   (DIST · ALT · SPD · A–Z, each with an asc/desc toggle). Ships get

@@ -144,6 +144,48 @@
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
+    /* Watchlist rows in the settings panel. */
+    .watch-rows { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .watch-empty {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+    .watch-row { display: flex; align-items: stretch; gap: 6px; }
+    .watch-go {
+      flex: 1;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 12px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .watch-go:disabled { cursor: default; opacity: 0.6; }
+    .watch-go .watch-name { font-weight: 700; font-size: 13px; letter-spacing: 0.08em; }
+    .watch-go .watch-sub { font-size: 10px; letter-spacing: 0.08em; color: var(--muted); }
+    .watch-remove {
+      min-width: 44px;
+      min-height: 44px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 15px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .watch-remove:active { color: var(--danger); border-color: var(--danger); }
+
     .btn-danger {
       min-height: 44px;
       padding: 0 14px;
@@ -597,6 +639,26 @@
     .sel-close:hover, .sel-close:active {
       color: var(--text);
       background: var(--surface-2);
+    }
+    /* WATCH toggle on the selected-plane card (specific-plane tracker). */
+    .sel-watch {
+      min-height: 44px;
+      padding: 0 10px;
+      border: 1px solid var(--border-2);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sel-watch.on {
+      color: var(--accent);
+      border-color: var(--accent);
     }
     .selected-card.is-empty {
       padding: 8px 12px;
