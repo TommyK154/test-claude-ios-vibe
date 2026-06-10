@@ -116,6 +116,13 @@ both. When editing:
    dropped pointerup locks the gesture in pinch mode forever and the
    user's "continues to zoom when I try to pan, can't tap planes"
    bug regresses.
+8. **Pinch→pan handoff pans are never background-tap deselects.**
+   Both handoff paths (the one-finger-remaining branch in `onPointerEnd`
+   and the stale-partner synthetic lift in `pointermove`) call
+   `enterPan(..., null, /* fromPinch */ true)`, and `commitPan` skips
+   `maybeDeselectOnBackgroundTap` when `panStart.fromPinch`. Lifting
+   fingers out of a pinch is not a tap; without this flag, ending a
+   pinch over empty map deselects the plane the user was tracking.
 
 ### Render ordering
 

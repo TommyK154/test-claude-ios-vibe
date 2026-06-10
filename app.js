@@ -3262,7 +3262,7 @@
 
         // --- transitions ---
 
-        function enterPan(pointerId, x, y, downTarget) {
+        function enterPan(pointerId, x, y, downTarget, fromPinch) {
           var rect = svg.getBoundingClientRect();
           mode = "pan";
           pinchStart = null;
@@ -3278,7 +3278,12 @@
             // should NOT treat a no-drag release as a background deselect.
             // The plane/ship's own click handler runs after the pointer sequence.
             downTargetInteractive: !!(downTarget &&
-              (downTarget.closest ? downTarget.closest("[data-hex], [data-mmsi]") : null))
+              (downTarget.closest ? downTarget.closest("[data-hex], [data-mmsi]") : null)),
+            // True when this pan began as a pinch→pan handoff (one finger
+            // lifted, or a stale partner was synthesized away). Lifting a
+            // finger out of a pinch is never a deliberate background tap,
+            // so commitPan must not deselect on a no-drag release.
+            fromPinch: !!fromPinch
           };
         }
 
@@ -3320,8 +3325,9 @@
           mode = "idle";
           if (!ps.captured) {
             // Genuine tap, not a drag. Treat as a potential background-tap
-            // deselect if the tap wasn't on an interactive marker.
-            maybeDeselectOnBackgroundTap(ps);
+            // deselect if the tap wasn't on an interactive marker — unless
+            // this pan was a pinch→pan handoff, which is never a tap.
+            if (!ps.fromPinch) maybeDeselectOnBackgroundTap(ps);
             return;
           }
           var dx = (lastPt ? lastPt.x : ps.startX) - ps.startX;
@@ -3419,7 +3425,7 @@
                 delete pointers[staleId];
                 try { svg.releasePointerCapture(parseInt(staleId, 10)); } catch (err) {}
                 commitPinch();
-                enterPan(e.pointerId, e.clientX, e.clientY, null);
+                enterPan(e.pointerId, e.clientX, e.clientY, null, true);
                 e.preventDefault();
                 return;
               }
@@ -3469,7 +3475,7 @@
               commitPinch();
               var id = Object.keys(pointers)[0];
               var pt = pointers[id];
-              enterPan(parseInt(id, 10), pt.x, pt.y, null);
+              enterPan(parseInt(id, 10), pt.x, pt.y, null, true);
             }
             // If remaining >= 2, a third finger lifted — stay in pinch.
             return;
@@ -3899,8 +3905,10 @@
             };
             syncCoordInputs();
             markActivePreset();
-            renderTiles();
-            fetchNow();
+            // Route through the same choke point as every other center
+            // mutation (CLAUDE.md invariant) — without it, first-load
+            // geolocation left AIS subscribed to the default center's bbox.
+            onCenterChanged();
           },
           function (err) {
             if (err && err.code === 1) {
