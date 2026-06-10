@@ -415,6 +415,7 @@
         fetching: false,
         refreshTimer: null,
         countdownTimer: null,
+        watchPollTimer: null,
         nextFetchAt: 0,
         lastGeo: null,
         aisKey: null,
@@ -858,7 +859,10 @@
           var hex = keys[k];
           var t = state.tracks[hex];
           if (!t.length || t[t.length - 1].t < cutoff) {
-            if (hex !== state.selectedHex) delete state.tracks[hex];
+            // Selected + watched hexes keep their history — the watch
+            // poller may legitimately go quiet (plane parked) and the
+            // flight logger needs the trail when it lifts again.
+            if (hex !== state.selectedHex && !isWatched(hex)) delete state.tracks[hex];
           }
         }
       }
@@ -3182,6 +3186,68 @@
         box.innerHTML = html;
       }
 
+      // --- Watch poller ---
+      // Keeps watched planes fresh even outside the radar bbox. One
+      // /v2/hex/{hex} request per tick, round-robin across the list, so
+      // the request budget stays flat (~0.1 req/s) no matter how many
+      // planes are watched: bulk fetch (~0.1) + selected poll (0.2) +
+      // this ≈ 0.4 req/s against adsb.fi's ~1 req/s public guidance.
+      var WATCH_TICK_MS = 10000;
+      var watchRoundRobin = 0;
+
+      function startWatchPoll() {
+        if (state.watchPollTimer) return;
+        state.watchPollTimer = setInterval(watchPollTick, WATCH_TICK_MS);
+      }
+      function stopWatchPoll() {
+        if (state.watchPollTimer) { clearInterval(state.watchPollTimer); state.watchPollTimer = null; }
+      }
+      function watchPollTick() {
+        if (!state.watchlist.length) return;
+        var now = Date.now();
+        for (var i = 0; i < state.watchlist.length; i++) {
+          var idx = (watchRoundRobin + i) % state.watchlist.length;
+          var w = state.watchlist[idx];
+          // The selected plane already gets the 5 s pollSelected.
+          if (w.hex === state.selectedHex) continue;
+          // Dormant backoff: a plane that wasn't airborne last time is
+          // skipped for ~3 full rotations so it doesn't burn budget.
+          if (w.notSeenUntil && now < w.notSeenUntil) continue;
+          watchRoundRobin = idx + 1;
+          pollWatched(w);
+          return;
+        }
+      }
+      function pollWatched(w) {
+        tryPhotoUrls(hexPollUrls(w.hex), 0).then(function (data) {
+          var arr = (data && (data.ac || data.aircraft)) || [];
+          var n = arr.length ? normalizeHexAc(arr[0]) : null;
+          if (!n) {
+            w.notSeenUntil = Date.now() +
+              WATCH_TICK_MS * Math.max(3, state.watchlist.length) * 3;
+            renderWatchRows();
+            return;
+          }
+          w.notSeenUntil = 0;
+          var s = state.watchLive[w.hex] || (state.watchLive[w.hex] = { hex: w.hex });
+          s.lat = n.lat;
+          s.lon = n.lon;
+          if (n.altFt != null) s.altFt = n.altFt;
+          if (n.gsKt != null) s.gsKt = n.gsKt;
+          if (n.trackDeg != null) s.trackDeg = n.trackDeg;
+          if (n.vertRate != null) s.vertRate = n.vertRate;
+          s.onGround = n.onGround;
+          if (n.callsign) s.callsign = n.callsign;
+          if (n.registration) s.registration = n.registration;
+          if (n.squawk) s.squawk = n.squawk;
+          s.lastSeenAt = Date.now();
+          // Track history accumulates for watched planes regardless of
+          // bbox — ground truth for the upcoming flight logger.
+          appendTrackPoint(w.hex, n.lat, n.lon, n.altFt);
+          renderWatchRows();
+        }).catch(function () { /* retry on a later rotation */ });
+      }
+
       function setupWatchlistUi() {
         var input = document.getElementById("watchAddInput");
         var btn = document.getElementById("watchAddBtn");
@@ -3260,71 +3326,104 @@
           state.selectedPollTimer = null;
         }
       }
-      function pollSelected(hex) {
-        if (state.selectedHex !== hex) { stopSelectedPoll(); return; }
+      // Shared parser for /v2/hex/{hex} aircraft objects (adsb.fi /
+      // adsb.lol readsb shape). Used by pollSelected and the watch
+      // poller. Returns null when the record has no usable position.
+      function normalizeHexAc(a) {
+        if (!a) return null;
+        var lat = (typeof a.lat === "number") ? a.lat : null;
+        var lon = (typeof a.lon === "number") ? a.lon : null;
+        if (lat == null || lon == null) return null;
+        var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
+        var vr = (typeof a.baro_rate === "number") ? a.baro_rate
+               : (typeof a.geom_rate === "number") ? a.geom_rate : null;
+        return {
+          lat: lat,
+          lon: lon,
+          altFt: typeof altRaw === "number" ? altRaw : null,
+          onGround: altRaw === "ground" || a.ground === true,
+          vertRate: vr,
+          gsKt: (typeof a.gs === "number") ? a.gs : null,
+          trackDeg: (typeof a.track === "number") ? a.track : null,
+          callsign: (a.flight || "").toString().trim(),
+          registration: a.r || "",
+          type: a.t || "",
+          squawk: a.squawk || "",
+          fixAgeMs: posAgeMs({ seenPos: num(a.seen_pos), seen: num(a.seen) })
+        };
+      }
+
+      function hexPollUrls(hex) {
         var base = "https://opendata.adsb.fi/api/v2/hex/" + hex;
         var alt = "https://api.adsb.lol/v2/hex/" + hex;
-        var urls = [base, alt, viaCorsProxy(base), viaCorsProxy(alt)];
-        tryPhotoUrls(urls, 0).then(function (data) {
+        return [base, alt, viaCorsProxy(base), viaCorsProxy(alt)];
+      }
+
+      // Append a raw fetched position to the per-hex track history.
+      // Selected/watched trails cap at 500 samples (vs 120 for bulk
+      // contacts — see accumulateTracks).
+      function appendTrackPoint(hex, lat, lon, altFt) {
+        var t = state.tracks[hex] || (state.tracks[hex] = []);
+        var prev = t.length ? t[t.length - 1] : null;
+        if (!prev || Math.abs(prev.lat - lat) > 0.0001 || Math.abs(prev.lon - lon) > 0.0001) {
+          t.push({ lat: lat, lon: lon, t: Date.now(), alt: altFt });
+          if (t.length > 500) t.shift();
+        }
+      }
+
+      function pollSelected(hex) {
+        if (state.selectedHex !== hex) { stopSelectedPoll(); return; }
+        tryPhotoUrls(hexPollUrls(hex), 0).then(function (data) {
           var arr = (data && (data.ac || data.aircraft)) || [];
           if (!arr.length) return;
-          var a = arr[0];
-          var lat = (typeof a.lat === "number") ? a.lat : null;
-          var lon = (typeof a.lon === "number") ? a.lon : null;
-          if (lat == null || lon == null) return;
-          var altRaw = a.alt_baro != null ? a.alt_baro : a.alt_geom;
-          var onGround = altRaw === "ground" || a.ground === true;
-          var altFt = typeof altRaw === "number" ? altRaw : null;
-          var vr = (typeof a.baro_rate === "number") ? a.baro_rate
-                 : (typeof a.geom_rate === "number") ? a.geom_rate : null;
-          var fixAgeMs = posAgeMs({ seenPos: num(a.seen_pos), seen: num(a.seen) });
+          var n = normalizeHexAc(arr[0]);
+          if (!n) return;
           // Update the in-bbox plane if present…
           var found = null;
           for (var i = 0; i < state.planes.length; i++) {
             if (state.planes[i].hex === hex.toLowerCase()) { found = state.planes[i]; break; }
           }
           if (found) {
-            found.lat = lat;
-            found.lon = lon;
-            if (altFt != null) found.altFt = altFt;
-            if (typeof a.gs === "number") found.gsKt = a.gs;
-            if (typeof a.track === "number") found.trackDeg = a.track;
-            if (vr != null) found.vertRate = vr;
-            found.onGround = onGround;
-            found.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
+            found.lat = n.lat;
+            found.lon = n.lon;
+            if (n.altFt != null) found.altFt = n.altFt;
+            if (n.gsKt != null) found.gsKt = n.gsKt;
+            if (n.trackDeg != null) found.trackDeg = n.trackDeg;
+            if (n.vertRate != null) found.vertRate = n.vertRate;
+            found.onGround = n.onGround;
+            found.distNm = haversineNm(state.center.lat, state.center.lon, n.lat, n.lon);
             // Reset dead-reckoning base to the just-fetched ground truth,
             // backdated by the fix age.
-            found.baseLat = lat;
-            found.baseLon = lon;
-            found.baseAt = Date.now() - fixAgeMs;
+            found.baseLat = n.lat;
+            found.baseLon = n.lon;
+            found.baseAt = Date.now() - n.fixAgeMs;
           }
           // …and always refresh the sticky selected-plane snapshot so the
           // trail/icon/route stay correct when the plane is outside the bbox.
           var base2 = (found ? Object.assign({}, found) : (state.selectedPlaneData || {}));
           base2.hex = hex.toLowerCase();
-          base2.lat = lat;
-          base2.lon = lon;
-          if (altFt != null) base2.altFt = altFt;
-          if (typeof a.gs === "number") base2.gsKt = a.gs;
-          if (typeof a.track === "number") base2.trackDeg = a.track;
-          if (vr != null) base2.vertRate = vr;
-          base2.onGround = onGround;
-          var callsign = (a.flight || "").toString().trim();
+          base2.lat = n.lat;
+          base2.lon = n.lon;
+          if (n.altFt != null) base2.altFt = n.altFt;
+          if (n.gsKt != null) base2.gsKt = n.gsKt;
+          if (n.trackDeg != null) base2.trackDeg = n.trackDeg;
+          if (n.vertRate != null) base2.vertRate = n.vertRate;
+          base2.onGround = n.onGround;
           // A mid-selection callsign switch is the stale-transponder /
           // callsign-change signal the route investigation needs — log it.
-          if (callsign && base2.callsign && callsign !== base2.callsign) {
-            routeDiagPush({ ev: "callsign-change", hex: hex.toLowerCase(), from: base2.callsign, to: callsign });
+          if (n.callsign && base2.callsign && n.callsign !== base2.callsign) {
+            routeDiagPush({ ev: "callsign-change", hex: hex.toLowerCase(), from: base2.callsign, to: n.callsign });
           }
-          if (callsign) base2.callsign = callsign;
-          if (a.r) base2.registration = a.r;
-          if (a.t) base2.type = a.t;
-          if (a.squawk) base2.squawk = a.squawk;
-          base2.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
+          if (n.callsign) base2.callsign = n.callsign;
+          if (n.registration) base2.registration = n.registration;
+          if (n.type) base2.type = n.type;
+          if (n.squawk) base2.squawk = n.squawk;
+          base2.distNm = haversineNm(state.center.lat, state.center.lon, n.lat, n.lon);
           // Reset dead-reckoning base to the just-fetched ground truth,
           // backdated by the fix age.
-          base2.baseLat = lat;
-          base2.baseLon = lon;
-          base2.baseAt = Date.now() - fixAgeMs;
+          base2.baseLat = n.lat;
+          base2.baseLon = n.lon;
+          base2.baseAt = Date.now() - n.fixAgeMs;
           state.selectedPlaneData = base2;
           // Mark pollSelected as authoritative for the next 6 s so bulk-fetch
           // and accumulateTracks don't write a competing position.
@@ -3333,13 +3432,7 @@
           // cheap; this also re-fetches when the broadcast callsign changes.
           if (base2.callsign) fetchRoute(base2.callsign);
           // Append to track history keyed by hex (works regardless of bbox).
-          var tkey = hex.toLowerCase();
-          var t = state.tracks[tkey] || (state.tracks[tkey] = []);
-          var prev = t.length ? t[t.length - 1] : null;
-          if (!prev || Math.abs(prev.lat - lat) > 0.0001 || Math.abs(prev.lon - lon) > 0.0001) {
-            t.push({ lat: lat, lon: lon, t: Date.now(), alt: altFt });
-            if (t.length > 500) t.shift();
-          }
+          appendTrackPoint(hex.toLowerCase(), n.lat, n.lon, n.altFt);
           renderRadar();
           renderOverlays();
           renderSelected();
@@ -3405,11 +3498,13 @@
           if (state.countdownTimer) { clearInterval(state.countdownTimer); state.countdownTimer = null; }
           if (state.selectedPollTimer) { clearInterval(state.selectedPollTimer); state.selectedPollTimer = null; }
           if (state.militaryRefreshTimer) { clearInterval(state.militaryRefreshTimer); state.militaryRefreshTimer = null; }
+          stopWatchPoll();
         } else {
           fetchNow();
           if (state.selectedHex) startSelectedPoll(state.selectedHex);
           refreshMilitary();
           state.militaryRefreshTimer = setInterval(refreshMilitary, 2 * 60 * 1000);
+          startWatchPoll();
         }
       });
 
@@ -4405,6 +4500,7 @@
       setupRadarDrag();
       setupSettings();
       setupWatchlistUi();
+      startWatchPoll();
       setupLeadPicker();
       setupMapLayerPicker();
       setupTileStatusCopy();

@@ -222,6 +222,13 @@ fetch success handler. The status bar displays the current rate
 
 Selected-plane fast-poll stays at 5 s, now only 2× bulk (vs. 6× before).
 
+Watch poller: one `/v2/hex/{hex}` request every 10 s (`WATCH_TICK_MS`),
+round-robin across `state.watchlist` (skipping the selected hex, which
+pollSelected already covers; skipping dormant planes for ~3 rotations
+after an empty response). Flat ~0.1 req/s regardless of list size;
+total budget ≈ 0.4 req/s against adsb.fi's ~1 req/s guidance. Paused
+and resumed by the same `visibilitychange` handler as the other timers.
+
 ### AIS subscription
 
 aisstream free tier only streams the subscribed bounding box. The bbox
