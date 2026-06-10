@@ -90,6 +90,68 @@
         return out;
       }
 
+      // Flight-session state machine for the specific-plane tracker.
+      // Pure: feed it ground-truth samples one at a time, carry `next`
+      // forward, act on `event`. Phases:
+      //   ground → climbout (pending) → airborne → landing (pending) → ground
+      // Transitions need `confirmSamples` consecutive qualifying samples
+      // (debounce against onGround flicker / a single bad record).
+      // Events: {type:"takeoff"|"landing", t, lat, lon} stamped at the
+      // FIRST qualifying sample, and {type:"in-air"} when the first-ever
+      // sample is already airborne (flight in progress — origin unknown).
+      var FLIGHT_DEFAULTS = {
+        takeoffGsKt: 50,   // groundspeed that means takeoff roll / climbout
+        landingGsKt: 45,   // at/below this (or onGround) counts as down
+        confirmSamples: 2  // consecutive samples to confirm a transition
+      };
+      function flightSessionStep(prev, sample, opts) {
+        var o = opts || FLIGHT_DEFAULTS;
+        function airborneish(s) {
+          return !s.onGround && s.gsKt != null && s.gsKt > o.takeoffGsKt;
+        }
+        function groundish(s) {
+          return s.onGround === true || (s.gsKt != null && s.gsKt < o.landingGsKt);
+        }
+        function mark(s) { return { t: s.t, lat: s.lat, lon: s.lon }; }
+        if (!prev || !prev.phase) {
+          if (airborneish(sample)) {
+            return {
+              next: { phase: "airborne", count: 0, pending: null },
+              event: { type: "in-air", t: sample.t, lat: sample.lat, lon: sample.lon }
+            };
+          }
+          return { next: { phase: "ground", count: 0, pending: null }, event: null };
+        }
+        var count = prev.count || 0;
+        if (prev.phase === "ground" || prev.phase === "climbout") {
+          if (airborneish(sample)) {
+            var p = prev.pending || mark(sample);
+            count = (prev.phase === "climbout") ? count + 1 : 1;
+            if (count >= o.confirmSamples) {
+              return {
+                next: { phase: "airborne", count: 0, pending: null },
+                event: { type: "takeoff", t: p.t, lat: p.lat, lon: p.lon }
+              };
+            }
+            return { next: { phase: "climbout", count: count, pending: p }, event: null };
+          }
+          return { next: { phase: "ground", count: 0, pending: null }, event: null };
+        }
+        // airborne / landing
+        if (groundish(sample)) {
+          var p2 = prev.pending || mark(sample);
+          count = (prev.phase === "landing") ? count + 1 : 1;
+          if (count >= o.confirmSamples) {
+            return {
+              next: { phase: "ground", count: 0, pending: null },
+              event: { type: "landing", t: p2.t, lat: p2.lat, lon: p2.lon }
+            };
+          }
+          return { next: { phase: "landing", count: count, pending: p2 }, event: null };
+        }
+        return { next: { phase: "airborne", count: 0, pending: null }, event: null };
+      }
+
       // ==== TESTABLE-PURE-END ====
 
       // ==================== PRESETS · AIRPORTS ====================
@@ -313,10 +375,60 @@
         return __airportIndex;
       }
 
+      // 1°×1° spatial buckets for nearest-airport lookups (flight logger).
+      // Separate from buildAirportIndex(), which is code/prefix-keyed for
+      // the search box. Each bucket entry keeps the row's original index:
+      // the bundle is importance-sorted (large → medium → small → heliport),
+      // so among near-tied candidates the lowest index is the "real"
+      // airport rather than a co-located heliport.
+      var __airportGrid = null;
+      function buildAirportGrid() {
+        if (__airportGrid) return __airportGrid;
+        var list = getAirports();
+        var grid = Object.create(null);
+        for (var i = 0; i < list.length; i++) {
+          var a = list[i];
+          if (typeof a.lat !== "number" || typeof a.lon !== "number") continue;
+          var key = Math.floor(a.lat) + "," + Math.floor(a.lon);
+          (grid[key] || (grid[key] = [])).push({ a: a, idx: i });
+        }
+        __airportGrid = grid;
+        return grid;
+      }
+      function nearestAirport(lat, lon, maxNm) {
+        if (lat == null || lon == null) return null;
+        maxNm = maxNm || 5;
+        var grid = buildAirportGrid();
+        var la = Math.floor(lat), lo = Math.floor(lon);
+        var cands = [];
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            var cell = grid[(la + dy) + "," + (lo + dx)];
+            if (!cell) continue;
+            for (var i = 0; i < cell.length; i++) {
+              var d = haversineNm(lat, lon, cell[i].a.lat, cell[i].a.lon);
+              if (d <= maxNm) cands.push({ a: cell[i].a, idx: cell[i].idx, d: d });
+            }
+          }
+        }
+        if (!cands.length) return null;
+        var minD = Infinity;
+        cands.forEach(function (c) { if (c.d < minD) minD = c.d; });
+        // Importance bias among near-ties (within 1.5× of the closest,
+        // plus a 0.5 NM floor so co-located fields count as ties).
+        var cut = Math.max(minD * 1.5, minD + 0.5);
+        var best = null;
+        cands.forEach(function (c) {
+          if (c.d <= cut && (!best || c.idx < best.idx)) best = c;
+        });
+        return best ? best.a : null;
+      }
+
       if (typeof window !== "undefined") {
         window.addEventListener("airports-loaded", function () {
           __airportsFullCache = null;          // force re-convert on next call
           __airportIndex = null;               // force re-index on next match()
+          __airportGrid = null;                // force re-bucket on next nearestAirport()
           try { if (typeof updateTacReadout === "function") updateTacReadout(); } catch (e) {}
         });
       }
@@ -3183,7 +3295,193 @@
             '<button type="button" class="watch-remove" data-hex="' + w.hex + '" aria-label="Remove">✕</button>' +
           '</div>';
         }).join("");
+        if (state.storagePersisted === false) {
+          // navigator.storage.persist() was denied: iOS can evict the
+          // flight log after 7 days of disuse. CSV export is the durable
+          // escape hatch; installing to the Home Screen exempts the site.
+          html += '<div class="watch-empty">STORAGE NOT PERSISTENT — EXPORT FLIGHTS YOU WANT TO KEEP</div>';
+        }
         box.innerHTML = html;
+      }
+
+      // --- Flight log storage (IndexedDB) ---
+      // localStorage is far too small for tracklogs; IndexedDB holds
+      // `flights` (one row per detected flight) and `points` (one row per
+      // ground-truth position sample, keyed [flightId, t]). Promise-wrapped
+      // by hand — no libraries per repo constraints.
+      var FLIGHT_DB_NAME = "radarTracker";
+      var __flightDbP = null;
+      function openFlightDb() {
+        if (__flightDbP) return __flightDbP;
+        __flightDbP = new Promise(function (resolve, reject) {
+          if (typeof indexedDB === "undefined") { reject(new Error("IndexedDB unavailable")); return; }
+          var req = indexedDB.open(FLIGHT_DB_NAME, 1);
+          req.onupgradeneeded = function () {
+            var db = req.result;
+            var flights = db.createObjectStore("flights", { keyPath: "id", autoIncrement: true });
+            flights.createIndex("byHex", "hex", { unique: false });
+            var points = db.createObjectStore("points", { keyPath: ["flightId", "t"] });
+            points.createIndex("byFlight", "flightId", { unique: false });
+          };
+          req.onsuccess = function () { resolve(req.result); };
+          req.onerror = function () { reject(req.error); };
+        });
+        return __flightDbP;
+      }
+      function idbReq(req) {
+        return new Promise(function (resolve, reject) {
+          req.onsuccess = function () { resolve(req.result); };
+          req.onerror = function () { reject(req.error); };
+        });
+      }
+      function flightDbAdd(store, value) {
+        return openFlightDb().then(function (db) {
+          return idbReq(db.transaction(store, "readwrite").objectStore(store).add(value));
+        });
+      }
+      function flightDbPut(store, value) {
+        return openFlightDb().then(function (db) {
+          return idbReq(db.transaction(store, "readwrite").objectStore(store).put(value));
+        });
+      }
+      // iOS ITP evicts site storage after 7 days of disuse; ask for
+      // persistence once we actually hold flight data. Result surfaced in
+      // the watchlist block via renderWatchRows.
+      var __persistAsked = false;
+      function requestStoragePersist() {
+        if (__persistAsked) return;
+        __persistAsked = true;
+        try {
+          if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then(function (granted) {
+              state.storagePersisted = granted;
+              renderWatchRows();
+            });
+          }
+        } catch (e) {}
+      }
+
+      // --- Flight logger ---
+      // Feeds every fresh watched-plane sample through flightSessionStep;
+      // takeoff/in-air opens a flight row, landing (or >30 min silence)
+      // closes it with the nearest airport. Points are RAW fetched
+      // positions only — never dead-reckoned (same ground-truth rule as
+      // accumulateTracks).
+      var FLIGHT_GAP_CLOSE_MS = 30 * 60 * 1000;
+      var flightSessions = {}; // hex -> { fsm, flightIdP, lastT }
+
+      function flightLogSample(hex, n) {
+        hex = (hex || "").toLowerCase();
+        if (!isWatched(hex)) return;
+        var sess = flightSessions[hex] || (flightSessions[hex] = { fsm: null, flightIdP: null, lastT: 0 });
+        var t = Date.now() - (n.fixAgeMs || 0);
+        if (sess.lastT && t - sess.lastT < 1000) return; // same fix re-fetched
+        // Long silence while a flight is open: close it as a gap (plane
+        // left coverage / app was closed) and re-adopt phase fresh.
+        if (sess.flightIdP && sess.lastT && t - sess.lastT > FLIGHT_GAP_CLOSE_MS) {
+          closeFlight(sess, null, "gap");
+          sess.fsm = null;
+        }
+        var prevT = sess.lastT;
+        sess.lastT = t;
+        var sample = { t: t, lat: n.lat, lon: n.lon, altFt: n.altFt, gsKt: n.gsKt, vertRate: n.vertRate, onGround: n.onGround };
+        var r = flightSessionStep(sess.fsm, sample);
+        sess.fsm = r.next;
+        var ev = r.event;
+        if (ev && (ev.type === "takeoff" || ev.type === "in-air") && !sess.flightIdP) {
+          openFlight(sess, hex, n, ev);
+          notifyFlightEvent(hex, n, ev);
+        } else if (ev && ev.type === "landing" && sess.flightIdP) {
+          closeFlight(sess, ev, "landing");
+          notifyFlightEvent(hex, n, ev);
+        }
+        // Log the sample while a flight is open (including the final
+        // ground roll — useful for block-time analysis).
+        if (sess.flightIdP) {
+          sess.flightIdP.then(function (id) {
+            if (id == null) return;
+            flightDbPut("points", {
+              flightId: id, t: sample.t, lat: sample.lat, lon: sample.lon,
+              trackDeg: n.trackDeg, gsKt: sample.gsKt, altFt: sample.altFt,
+              vertRate: sample.vertRate
+            }).catch(function () {});
+          });
+        }
+      }
+
+      function openFlight(sess, hex, n, ev) {
+        var apt = ev.type === "takeoff" ? nearestAirport(ev.lat, ev.lon, 5) : null;
+        var w = state.watchlist[findWatch(hex)] || {};
+        var rec = {
+          hex: hex,
+          reg: w.reg || n.registration || "",
+          callsign: n.callsign || "",
+          startAt: ev.t,
+          startType: ev.type, // "takeoff" = observed; "in-air" = joined mid-flight
+          fromApt: apt ? (apt.icao || apt.iata || "") : "",
+          toApt: "",
+          endAt: null,
+          endType: null,
+          durationMs: null
+        };
+        requestStoragePersist();
+        sess.flightIdP = flightDbAdd("flights", rec).then(function (id) {
+          return id;
+        }).catch(function () {
+          sess.flightIdP = null;
+          return null;
+        });
+      }
+
+      function closeFlight(sess, ev, how) {
+        var p = sess.flightIdP;
+        var lastT = sess.lastT;
+        sess.flightIdP = null;
+        if (!p) return;
+        p.then(function (id) {
+          if (id == null) return;
+          return openFlightDb().then(function (db) {
+            return new Promise(function (resolve) {
+              var tx = db.transaction("flights", "readwrite");
+              var st = tx.objectStore("flights");
+              var g = st.get(id);
+              g.onsuccess = function () {
+                var rec = g.result;
+                if (!rec) { resolve(); return; }
+                rec.endAt = ev ? ev.t : (lastT || Date.now());
+                rec.endType = how;
+                if (ev) {
+                  var apt = nearestAirport(ev.lat, ev.lon, 5);
+                  rec.toApt = apt ? (apt.icao || apt.iata || "") : "";
+                }
+                rec.durationMs = rec.endAt - rec.startAt;
+                st.put(rec);
+                resolve();
+              };
+              g.onerror = function () { resolve(); };
+            });
+          });
+        }).catch(function () {});
+      }
+
+      // In-app alert banner for takeoff / landing events. (Web/system
+      // notifications are deferred to the PWA phase per project plan.)
+      function notifyFlightEvent(hex, n, ev) {
+        var w = state.watchlist[findWatch(hex)] || {};
+        var who = w.reg || w.label || (n && n.callsign) || hex.toUpperCase();
+        var apt = ev.lat != null ? nearestAirport(ev.lat, ev.lon, 5) : null;
+        var aptTxt = apt ? " · " + (apt.icao || apt.iata) : "";
+        var verb = ev.type === "landing" ? "LANDED" : ev.type === "takeoff" ? "DEPARTED" : "IN FLIGHT";
+        showWatchAlert(who + " " + verb + aptTxt);
+      }
+      var __watchAlertTimer = null;
+      function showWatchAlert(text) {
+        var el = document.getElementById("watchAlert");
+        if (!el) return;
+        el.textContent = text;
+        el.hidden = false;
+        if (__watchAlertTimer) clearTimeout(__watchAlertTimer);
+        __watchAlertTimer = setTimeout(function () { el.hidden = true; }, 12000);
       }
 
       // --- Watch poller ---
@@ -3242,8 +3540,9 @@
           if (n.squawk) s.squawk = n.squawk;
           s.lastSeenAt = Date.now();
           // Track history accumulates for watched planes regardless of
-          // bbox — ground truth for the upcoming flight logger.
+          // bbox — ground truth for the flight logger.
           appendTrackPoint(w.hex, n.lat, n.lon, n.altFt);
+          flightLogSample(w.hex, n);
           renderWatchRows();
         }).catch(function () { /* retry on a later rotation */ });
       }
@@ -3433,6 +3732,9 @@
           if (base2.callsign) fetchRoute(base2.callsign);
           // Append to track history keyed by hex (works regardless of bbox).
           appendTrackPoint(hex.toLowerCase(), n.lat, n.lon, n.altFt);
+          // The 5 s selected poll is the highest-resolution feed the
+          // flight logger can get for a watched plane.
+          if (isWatched(hex)) flightLogSample(hex, n);
           renderRadar();
           renderOverlays();
           renderSelected();

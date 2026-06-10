@@ -85,6 +85,34 @@ ship UI is hidden and only ADS-B is shown.
 - `state.watchLive` — runtime-only hex → latest fetched sample for
   watched planes (fed by the watch poller).
 
+### Flight logger (specific-plane tracker)
+
+Watched-plane samples (watch poller @ 10 s round-robin, or the 5 s
+selected poll when the watched plane is also selected) feed
+`flightLogSample(hex, n)`:
+
+- `flightSessionStep` (TESTABLE-PURE block; `tools/test-flight-session.js`)
+  is the pure takeoff/landing detector: ground → climbout → airborne →
+  landing → ground, 2-sample debounce, events stamped at the first
+  qualifying sample. First-ever sight of an airborne plane emits
+  `in-air` (flight already in progress, origin unknown).
+- Takeoff/in-air opens a row in IndexedDB (`radarTracker` DB, `flights`
+  store); each subsequent sample appends to `points` ([flightId, t]
+  key). Landing — or > 30 min of silence — closes the row with
+  `nearestAirport(lat, lon, 5)`.
+- **Points are RAW fetched positions only, never dead-reckoned** — same
+  ground-truth rule as `accumulateTracks`.
+- `nearestAirport` uses 1°×1° spatial buckets over `getAirports()`
+  (invalidated by `airports-loaded` like the search index). Among
+  candidates within 1.5× of the closest (+0.5 NM floor), the lowest
+  original row index wins — the bundle is importance-sorted, so this
+  biases real airports over co-located heliports.
+- `navigator.storage.persist()` is requested on first write; if denied,
+  the watchlist block warns that iOS may evict the log after 7 days
+  of disuse (CSV export is the durable escape hatch).
+- Takeoff/landing events show an in-app banner (`#watchAlert`).
+  System/Web notifications are deferred to a PWA phase.
+
 ### Gesture invariants
 
 `setupRadarDrag` is the ONLY place pan / pinch state lives. Any regression

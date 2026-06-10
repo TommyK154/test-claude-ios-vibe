@@ -590,6 +590,29 @@
       text-overflow: ellipsis;
     }
     .tile-status[hidden] { display: none !important; }
+    /* Watched-plane takeoff/landing alert banner (specific-plane tracker). */
+    .radar-overlay.watch-alert-row {
+      top: 60px;
+      justify-content: flex-start;
+      pointer-events: none;
+    }
+    .watch-alert {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(7, 12, 21, 0.85);
+      border: 1px solid var(--accent);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      max-width: calc(100% - 36px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .watch-alert[hidden] { display: none !important; }
     .tile-status:empty { display: none !important; }
     .tile-status.err {
       background: rgba(227, 125, 125, 0.16);

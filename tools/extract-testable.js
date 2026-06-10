@@ -24,7 +24,9 @@ function loadTestable() {
     "\nreturn { NM_TO_KM: NM_TO_KM, num: num, haversineNm: haversineNm," +
     " ROUTE_ELLIPSE_FACTOR: ROUTE_ELLIPSE_FACTOR," +
     " ROUTE_ELLIPSE_SLACK_NM: ROUTE_ELLIPSE_SLACK_NM," +
-    " routePlausibility: routePlausibility };"
+    " routePlausibility: routePlausibility," +
+    " FLIGHT_DEFAULTS: FLIGHT_DEFAULTS," +
+    " flightSessionStep: flightSessionStep };"
   );
   return factory();
 }
