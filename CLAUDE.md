@@ -179,6 +179,16 @@ Invariants:
   plane in the fresh `state.planes`), `pollSelected` (for the
   in-bbox entry + `state.selectedPlaneData`), and the AIS message
   handler (for each ship's new lat/lon).
+- **`baseAt` is backdated by the fix age** (`posAgeMs()`: readsb
+  `seen_pos`, falling back to `seen`, clamped to 60 s) so the ticker
+  advances from when the position was *measured*, not when we fetched
+  it. Stamping fetch time rendered planes up to ~30 s behind reality,
+  then snapped them forward on the next fresh fetch.
+- **Kinematics merge WITH their base.** The bulk handler's
+  selected-plane merge only updates `gsKt`/`trackDeg`/`vertRate` in the
+  same branch that resets position+base (`!selFreshBulk`). Merging a
+  new vector while pollSelected owns the base advances the OLD base
+  along the NEW vector — the "selected plane jumps ahead" bug.
 - Dead-reckoned positions are **display only**. `accumulateTracks()`
   uses raw-fetched lat/lon so trails remain ground truth.
 - Guardrails: skip if `gsKt == null`, `trackDeg == null`, `onGround`

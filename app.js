@@ -617,7 +617,8 @@
             gsKt: num(a.gs),
             trackDeg: num(a.track),
             squawk: a.squawk || "",
-            seen: num(a.seen)
+            seen: num(a.seen),
+            seenPos: num(a.seen_pos)
           });
         }
         return out;
@@ -652,10 +653,22 @@
             gsKt: velMs != null ? velMs * 1.94384 : null,
             trackDeg: num(s[10]),
             squawk: s[14] || "",
-            seen: null
+            seen: null,
+            seenPos: null
           });
         }
         return out;
+      }
+
+      // Milliseconds since this aircraft's position fix, per the API's
+      // seen_pos/seen age fields. Dead-reckoning bases are backdated by
+      // this so a 20 s-old fix isn't stamped as "now" — that rendered
+      // planes behind reality, then snapped them forward on the next
+      // fresh fetch. Clamped to 60 s; older ages are as suspect as the fix.
+      function posAgeMs(p) {
+        var s = p.seenPos != null ? p.seenPos : p.seen;
+        if (s == null || !isFinite(s) || s < 0) return 0;
+        return Math.min(60, s) * 1000;
       }
 
       function num(v) {
@@ -704,6 +717,10 @@
           var last = arr.length ? arr[arr.length - 1] : null;
           if (last && Math.abs(last.lat - p.lat) < 0.0001 && Math.abs(last.lon - p.lon) < 0.0001) continue;
           arr.push({ lat: p.lat, lon: p.lon, t: now, alt: p.altFt });
+          // 120-sample cap is intentionally smaller than the selected
+          // plane's 500 (pollSelected / fetchHistoricalTrack): hundreds of
+          // unselected planes share this memory budget; one selected
+          // plane gets the long trail.
           if (arr.length > 120) arr.shift();
         }
         // Prune tracks older than 10 min without updates to save memory
@@ -932,7 +949,9 @@
           state.planes.forEach(function (p) {
             p.baseLat = p.lat;
             p.baseLon = p.lon;
-            p.baseAt = nowMs;
+            // Backdated by the fix age so deadReckonTick advances from
+            // when the position was measured, not when we fetched it.
+            p.baseAt = nowMs - posAgeMs(p);
           });
           // Keep the authoritative selected-plane snapshot fresh if the bulk
           // fetch caught it. Critical invariant: only overwrite positional
@@ -956,11 +975,19 @@
                 target.lon = fresh.lon;
                 target.baseLat = fresh.lat;
                 target.baseLon = fresh.lon;
-                target.baseAt = nowMs;
+                target.baseAt = nowMs - posAgeMs(fresh);
+                // Kinematics travel WITH the base they were measured at.
+                // Merging gsKt/trackDeg while pollSelected owns the base
+                // (selFreshBulk) made deadReckonTick advance the OLD base
+                // along the NEW vector — the "selected plane jumps ahead
+                // between refreshes" bug.
+                ["gsKt","trackDeg","vertRate"].forEach(function (k) {
+                  if (fresh[k] != null) target[k] = fresh[k];
+                });
               }
-              // Non-positional fields (altitude, speed, heading, callsign metadata)
-              // merge regardless — they don't cause visual jumps.
-              ["altFt","gsKt","trackDeg","vertRate","callsign","registration","type","squawk","distNm","onGround","hex","flight"].forEach(function (k) {
+              // Identity/metadata fields merge regardless — they don't
+              // move the marker, so they can't cause visual jumps.
+              ["altFt","callsign","registration","type","squawk","distNm","onGround","hex","flight"].forEach(function (k) {
                 if (fresh[k] != null) target[k] = fresh[k];
               });
               state.selectedPlaneData = target;
@@ -2884,6 +2911,7 @@
           var altFt = typeof altRaw === "number" ? altRaw : null;
           var vr = (typeof a.baro_rate === "number") ? a.baro_rate
                  : (typeof a.geom_rate === "number") ? a.geom_rate : null;
+          var fixAgeMs = posAgeMs({ seenPos: num(a.seen_pos), seen: num(a.seen) });
           // Update the in-bbox plane if present…
           var found = null;
           for (var i = 0; i < state.planes.length; i++) {
@@ -2898,10 +2926,11 @@
             if (vr != null) found.vertRate = vr;
             found.onGround = onGround;
             found.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
-            // Reset dead-reckoning base to the just-fetched ground truth.
+            // Reset dead-reckoning base to the just-fetched ground truth,
+            // backdated by the fix age.
             found.baseLat = lat;
             found.baseLon = lon;
-            found.baseAt = Date.now();
+            found.baseAt = Date.now() - fixAgeMs;
           }
           // …and always refresh the sticky selected-plane snapshot so the
           // trail/icon/route stay correct when the plane is outside the bbox.
@@ -2920,10 +2949,11 @@
           if (a.t) base2.type = a.t;
           if (a.squawk) base2.squawk = a.squawk;
           base2.distNm = haversineNm(state.center.lat, state.center.lon, lat, lon);
-          // Reset dead-reckoning base to the just-fetched ground truth.
+          // Reset dead-reckoning base to the just-fetched ground truth,
+          // backdated by the fix age.
           base2.baseLat = lat;
           base2.baseLon = lon;
-          base2.baseAt = Date.now();
+          base2.baseAt = Date.now() - fixAgeMs;
           state.selectedPlaneData = base2;
           // Mark pollSelected as authoritative for the next 6 s so bulk-fetch
           // and accumulateTracks don't write a competing position.
@@ -3939,7 +3969,8 @@
       // are not affected — accumulateTracks() uses raw-fetched positions.
       //
       // Guardrails: no advance if gsKt/track missing, onGround true, speed
-      // < 30 kt, or base is older than 120 s (stale data we shouldn't
+      // < 0.3 kt (shared with ships — a higher floor would freeze slow
+      // vessels), or base is older than 120 s (stale data we shouldn't
       // extrapolate indefinitely).
       function advanceByDR(obj, speedField, headingField, baseOlderThanMs) {
         var spd = obj[speedField];
