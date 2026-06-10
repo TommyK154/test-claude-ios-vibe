@@ -185,6 +185,59 @@
       -webkit-tap-highlight-color: transparent;
     }
     .watch-remove:active { color: var(--danger); border-color: var(--danger); }
+    .watch-log {
+      min-width: 44px;
+      min-height: 44px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .watch-log.on { color: var(--accent); border-color: var(--accent); }
+    /* Expanded flight log under a watch row. */
+    .watch-flights {
+      margin: 2px 0 4px;
+      padding: 6px 8px;
+      border: 1px dashed var(--border-2);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .flight-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .flight-row .flight-meta { color: var(--text); }
+    .flight-actions { display: flex; gap: 6px; }
+    .flight-export, .flight-del {
+      min-width: 44px;
+      min-height: 44px;
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      background: transparent;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .flight-export { color: var(--accent); border-color: var(--accent); }
+    .flight-del { color: var(--muted); }
+    .flight-del:active { color: var(--danger); border-color: var(--danger); }
 
     .btn-danger {
       min-height: 44px;

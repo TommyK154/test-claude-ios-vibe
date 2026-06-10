@@ -66,10 +66,18 @@ Live at **https://tommyk154.github.io/test-claude-ios-vibe/**
   status bar.
 - **Plane watchlist** — save up to 10 specific aircraft (by registration
   or ICAO hex, or via the WATCH button on a selected plane's card).
-  Watched planes wear a dashed ring on the radar; the settings panel
-  lists them with live altitude/speed and tap-to-jump. Foundation for
-  flight logging, CSV tracklog export, and takeoff/landing alerts
-  (in progress — see Future Work).
+  Watched planes wear a dashed ring on the radar and keep updating via a
+  dedicated low-rate poller even when they're outside the radar view;
+  the settings panel lists them with live altitude/speed and tap-to-jump.
+- **Flight logging + CSV tracklog export** — while the app is open,
+  watched planes get automatic takeoff/landing detection (with an in-app
+  banner like `N738C DEPARTED KCHD`) and every position sample is logged
+  to a per-flight tracklog in your browser (IndexedDB). Each watch row's
+  LOG button lists logged flights (date, route, duration) with
+  per-flight CSV export through the iOS share sheet — one row per
+  sample: time, lat, lon, course, groundspeed, altitude, vertical rate
+  (the FlightAware tracklog shape). Browser-only: flights are only
+  captured while the app is running somewhere.
 - **Contact-list filter & sort.** The list under the radar has filter
   chips (ALL · AIR · GROUND · MIL · NOTABLE · ⚠) and sort chips
   (DIST · ALT · SPD · A–Z, each with an asc/desc toggle). Ships get

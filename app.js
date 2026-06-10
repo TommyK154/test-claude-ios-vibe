@@ -3270,6 +3270,50 @@
         });
       }
 
+      // Which watch entry has its flight log expanded (one at a time).
+      var watchLogOpenHex = null;
+
+      function fmtDurationMs(ms) {
+        if (ms == null || !isFinite(ms) || ms < 0) return "—";
+        var mins = Math.round(ms / 60000);
+        var h = Math.floor(mins / 60), m = mins % 60;
+        return h ? h + "H " + ("0" + m).slice(-2) + "M" : m + "M";
+      }
+
+      // Async fill of the expanded flight list (IndexedDB read).
+      function fillWatchFlights(hex) {
+        var holder = document.querySelector('.watch-flights[data-hex="' + hex + '"]');
+        if (!holder) return;
+        flightDbFlightsByHex(hex).then(function (flights) {
+          var cur = document.querySelector('.watch-flights[data-hex="' + hex + '"]');
+          if (!cur) return; // panel re-rendered/collapsed meanwhile
+          if (!flights || !flights.length) {
+            cur.innerHTML = '<div class="watch-empty">NO FLIGHTS LOGGED YET — LOGGING RUNS WHILE THE APP IS OPEN</div>';
+            return;
+          }
+          flights.sort(function (a, b) { return b.startAt - a.startAt; });
+          cur.innerHTML = flights.map(function (f) {
+            var d = new Date(f.startAt);
+            var date = d.getUTCFullYear() + "-" +
+              ("0" + (d.getUTCMonth() + 1)).slice(-2) + "-" +
+              ("0" + d.getUTCDate()).slice(-2);
+            var legs = (f.fromApt || (f.startType === "in-air" ? "IN-AIR" : "?")) +
+              "→" + (f.toApt || (f.endAt ? "?" : "…"));
+            var dur = f.endAt ? fmtDurationMs(f.durationMs) : "IN PROGRESS";
+            return '<div class="flight-row">' +
+              '<span class="flight-meta">' + escapeHtml(date + " · " + legs + " · " + dur) + '</span>' +
+              '<span class="flight-actions">' +
+                '<button type="button" class="flight-export" data-id="' + f.id + '">CSV</button>' +
+                '<button type="button" class="flight-del" data-id="' + f.id + '" aria-label="Delete flight">✕</button>' +
+              '</span>' +
+            '</div>';
+          }).join("");
+        }).catch(function () {
+          var cur = document.querySelector('.watch-flights[data-hex="' + hex + '"]');
+          if (cur) cur.innerHTML = '<div class="watch-empty">FLIGHT LOG UNAVAILABLE</div>';
+        });
+      }
+
       function renderWatchRows() {
         var box = document.getElementById("watchListRows");
         if (!box) return;
@@ -3287,13 +3331,16 @@
           } else {
             sub = "NOT SEEN YET";
           }
+          var open = watchLogOpenHex === w.hex;
           return '<div class="watch-row" data-hex="' + w.hex + '">' +
             '<button type="button" class="watch-go" data-hex="' + w.hex + '"' + (s && s.lat != null ? '' : ' disabled') + '>' +
               '<span class="watch-name">' + name + '</span>' +
               '<span class="watch-sub">' + escapeHtml(sub) + '</span>' +
             '</button>' +
+            '<button type="button" class="watch-log' + (open ? " on" : "") + '" data-hex="' + w.hex + '">LOG</button>' +
             '<button type="button" class="watch-remove" data-hex="' + w.hex + '" aria-label="Remove">✕</button>' +
-          '</div>';
+          '</div>' +
+          (open ? '<div class="watch-flights" data-hex="' + w.hex + '">LOADING…</div>' : '');
         }).join("");
         if (state.storagePersisted === false) {
           // navigator.storage.persist() was denied: iOS can evict the
@@ -3302,6 +3349,7 @@
           html += '<div class="watch-empty">STORAGE NOT PERSISTENT — EXPORT FLIGHTS YOU WANT TO KEEP</div>';
         }
         box.innerHTML = html;
+        if (watchLogOpenHex) fillWatchFlights(watchLogOpenHex);
       }
 
       // --- Flight log storage (IndexedDB) ---
@@ -3359,6 +3407,90 @@
             });
           }
         } catch (e) {}
+      }
+
+      function flightDbFlightsByHex(hex) {
+        return openFlightDb().then(function (db) {
+          return idbReq(db.transaction("flights").objectStore("flights").index("byHex").getAll(hex));
+        });
+      }
+      function flightDbPoints(flightId) {
+        return openFlightDb().then(function (db) {
+          return idbReq(db.transaction("points").objectStore("points").index("byFlight").getAll(flightId));
+        });
+      }
+      function flightDbDelete(flightId) {
+        return openFlightDb().then(function (db) {
+          return new Promise(function (resolve) {
+            var tx = db.transaction(["flights", "points"], "readwrite");
+            tx.objectStore("flights").delete(flightId);
+            var idx = tx.objectStore("points").index("byFlight");
+            var cur = idx.openKeyCursor(IDBKeyRange.only(flightId));
+            cur.onsuccess = function () {
+              var c = cur.result;
+              if (c) { tx.objectStore("points").delete(c.primaryKey); c.continue(); }
+            };
+            tx.oncomplete = function () { resolve(); };
+            tx.onerror = function () { resolve(); };
+          });
+        });
+      }
+
+      // --- Tracklog CSV export ---
+      // FlightAware-tracklog shape: one row per ground-truth sample.
+      function buildFlightCsv(points) {
+        var lines = ["time_utc,latitude,longitude,course_deg,groundspeed_kt,altitude_ft,vertical_rate_fpm"];
+        points.sort(function (a, b) { return a.t - b.t; });
+        for (var i = 0; i < points.length; i++) {
+          var p = points[i];
+          lines.push([
+            new Date(p.t).toISOString(),
+            p.lat != null ? p.lat.toFixed(5) : "",
+            p.lon != null ? p.lon.toFixed(5) : "",
+            p.trackDeg != null ? Math.round(p.trackDeg) : "",
+            p.gsKt != null ? Math.round(p.gsKt) : "",
+            p.altFt != null ? Math.round(p.altFt) : "",
+            p.vertRate != null ? Math.round(p.vertRate) : ""
+          ].join(","));
+        }
+        return lines.join("\n") + "\n";
+      }
+
+      function exportFlightCsv(flightId) {
+        return openFlightDb().then(function (db) {
+          return idbReq(db.transaction("flights").objectStore("flights").get(flightId));
+        }).then(function (flight) {
+          if (!flight) return;
+          return flightDbPoints(flightId).then(function (points) {
+            var csv = buildFlightCsv(points || []);
+            var d = new Date(flight.startAt);
+            var ymd = d.getUTCFullYear().toString() +
+              ("0" + (d.getUTCMonth() + 1)).slice(-2) +
+              ("0" + d.getUTCDate()).slice(-2);
+            var name = (flight.reg || flight.hex).replace(/[^A-Za-z0-9-]/g, "") +
+              "_" + ymd +
+              "_" + (flight.fromApt || "UNK") + "-" + (flight.toApt || "UNK") + ".csv";
+            var blob = new Blob([csv], { type: "text/csv" });
+            // iOS path: native share sheet (AirDrop / Save to Files / Mail).
+            try {
+              var file = new File([blob], name, { type: "text/csv" });
+              if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+                navigator.share({ files: [file], title: name }).catch(function () {});
+                return;
+              }
+            } catch (e) {}
+            // Desktop / fallback: object-URL download.
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () {
+              URL.revokeObjectURL(a.href);
+              a.remove();
+            }, 2000);
+          });
+        }).catch(function () {});
       }
 
       // --- Flight logger ---
@@ -3563,6 +3695,22 @@
         box.addEventListener("click", function (e) {
           var rm = e.target.closest ? e.target.closest(".watch-remove") : null;
           if (rm) { removeWatch(rm.getAttribute("data-hex")); return; }
+          var log = e.target.closest ? e.target.closest(".watch-log") : null;
+          if (log) {
+            var lh = log.getAttribute("data-hex");
+            watchLogOpenHex = (watchLogOpenHex === lh) ? null : lh;
+            renderWatchRows();
+            return;
+          }
+          var exp = e.target.closest ? e.target.closest(".flight-export") : null;
+          if (exp) { exportFlightCsv(parseInt(exp.getAttribute("data-id"), 10)); return; }
+          var del = e.target.closest ? e.target.closest(".flight-del") : null;
+          if (del) {
+            flightDbDelete(parseInt(del.getAttribute("data-id"), 10)).then(function () {
+              if (watchLogOpenHex) fillWatchFlights(watchLogOpenHex);
+            });
+            return;
+          }
           var go = e.target.closest ? e.target.closest(".watch-go") : null;
           if (go && !go.disabled) {
             var hex = go.getAttribute("data-hex");
